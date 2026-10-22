@@ -1,0 +1,125 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KS_PASS: taskmgr-keystore-2026
+      KS_ALIAS: taskmgr
+      KS_PATH: ${{ github.workspace }}/keystore/release.jks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.32.x'
+          cache: true
+
+      # کلید امضا: فقط بار اول ساخته و داخل همین ریپازیتوری ذخیره می‌شود.
+      # بعد از آن همیشه از همین کلید استفاده می‌شود تا APK جدید روی قبلی «آپدیت» شود.
+      - name: Create signing key (first run only)
+        run: |
+          if [ ! -f keystore/release.jks ]; then
+            mkdir -p keystore
+            keytool -genkeypair -keystore keystore/release.jks -storetype JKS \
+              -alias "$KS_ALIAS" -keyalg RSA -keysize 2048 -validity 36500 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" \
+              -dname "CN=TaskManager, O=Personal, C=IR"
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add keystore/release.jks
+            git commit -m "Add signing key (do not delete)"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Create Android project and apply config
+        run: |
+          flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
+          rm -rf app_build/test app_build/lib
+          cp -r lib app_build/lib
+          cp pubspec.yaml app_build/pubspec.yaml
+          mkdir -p app_build/assets/fonts
+          for W in Regular Bold; do
+            F=app_build/assets/fonts/Vazirmatn-$W.ttf
+            curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+            || curl -fL --retry 3 -o $F "https://github.com/rastikerdar/vazirmatn/raw/v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+            || curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/fonts/ttf/Vazirmatn-$W.ttf"
+          done
+          python3 - <<'PY'
+          import io, re
+          # ---- AndroidManifest.xml ----
+          p = 'app_build/android/app/src/main/AndroidManifest.xml'
+          m = io.open(p, encoding='utf-8').read()
+          perms = '''    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.VIBRATE"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              '''
+          recv = '''    <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                          <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                          <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                      </intent-filter>
+                  </receiver>
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"/>
+              '''
+          assert '<application' in m and '</application>' in m
+          m = m.replace('<application', perms + '<application', 1)
+          m = m.replace('</application>', recv + '</application>', 1)
+          m = re.sub(r'android:label="[^"]*"', 'android:label="وظایف من"', m, count=1)
+          io.open(p, 'w', encoding='utf-8').write(m)
+          # ---- build.gradle.kts (امضا + desugaring) ----
+          g = 'app_build/android/app/build.gradle.kts'
+          s = io.open(g, encoding='utf-8').read()
+          assert 'compileOptions {' in s and 'signingConfigs.getByName("debug")' in s and 'buildTypes {' in s
+          s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                        'signingConfig = signingConfigs.getByName("release")\n            isMinifyEnabled = false\n            isShrinkResources = false', 1)
+          s = s.replace('    buildTypes {', '''    signingConfigs {
+                  create("release") {
+                      storeFile = file(System.getenv("KS_PATH"))
+                      storePassword = System.getenv("KS_PASS")
+                      keyAlias = System.getenv("KS_ALIAS")
+                      keyPassword = System.getenv("KS_PASS")
+                  }
+              }
+              buildTypes {''', 1)
+          s += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+          io.open(g, 'w', encoding='utf-8').write(s)
+          PY
+
+      - name: Build release APK
+        working-directory: app_build
+        run: |
+          flutter pub get
+          flutter build apk --release --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: نسخه ${{ github.run_number }}
+          files: app_build/build/app/outputs/flutter-apk/app-release.apk
