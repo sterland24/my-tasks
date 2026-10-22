@@ -50,7 +50,16 @@ jobs:
         run: |
           flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
           rm -rf app_build/test app_build/lib
-          cp -r lib app_build/lib
+          python3 - <<'PYA'
+          import io, re, os
+          src = 'main.dart' if os.path.exists('main.dart') else 'lib/main.dart'
+          s = io.open(src, encoding='utf-8').read()
+          # پاک‌سازی نویسه‌های نامرئی که هنگام کپی/پیست در گوشی وارد می‌شوند
+          s = re.sub('[\u00a0\u2007\u202f\u2028\u2029]', ' ', s)
+          s = re.sub('[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]', '', s)
+          os.makedirs('app_build/lib', exist_ok=True)
+          io.open('app_build/lib/main.dart', 'w', encoding='utf-8').write(s)
+          PYA
           cp pubspec.yaml app_build/pubspec.yaml
           mkdir -p app_build/assets/fonts
           for W in Regular Bold; do
@@ -103,6 +112,7 @@ jobs:
                   }
               }
               buildTypes {''', 1)
+          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"', 1)
           s += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
           io.open(g, 'w', encoding='utf-8').write(s)
           PY
