@@ -582,4 +582,986 @@ Widget btn(String l, VoidCallback f, {Color? bg, Color? fg, bool wide = false, E
       padding: wide ? const EdgeInsets.symmetric(vertical: 13) : p,
       decoration: BoxDecoration(color: bg ?? pal.card2, borderRadius: BorderRadius.circular(wide ? 14 : 10)),
       alignment: wide ? Alignment.center : null,
-      child: tx(l, size:
+      child: tx(l, size: wide ? 15 : 13, color: fg, w: wide ? FontWeight.bold : null),
+    ));
+
+Widget chip(String l, bool on, VoidCallback f) => tap(f, Container(padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7), decoration: BoxDecoration(color: on ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(20)), child: tx(l, size: 13, color: on ? Colors.white : pal.mut)));
+
+Widget cardBox({required Widget child, Color? stripe, Color? bg, double op = 1}) => Opacity(
+    opacity: op,
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(color: bg ?? pal.card, borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(width: 4, color: stripe ?? pal.bd),
+          Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(14, 12, 14, 12), child: child)),
+        ]),
+      ),
+    ));
+
+Widget secH(String ti, Color col, int n) => Padding(
+    padding: const EdgeInsets.only(top: 20, bottom: 8),
+    child: Row(children: [Container(width: 9, height: 9, decoration: BoxDecoration(color: col, shape: BoxShape.circle)), const SizedBox(width: 8), tx('$ti ($n)', size: 14, w: FontWeight.bold)]));
+
+Widget emptyBox(String m) => Padding(padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 10), child: Center(child: tx(m, color: pal.mut, align: TextAlign.center)));
+
+Widget lbl(String s) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6), child: tx(s, size: 13, color: pal.mut));
+
+InputDecoration deco(String hint) {
+  OutlineInputBorder b(Color c) => OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c));
+  return InputDecoration(hintText: fa(hint), hintStyle: TextStyle(color: pal.mut), filled: true, fillColor: pal.card2, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), border: b(pal.bd), enabledBorder: b(pal.bd), focusedBorder: b(pal.acc));
+}
+
+Widget field(TextEditingController c, String hint, {int lines = 1, ValueChanged<String>? onSub}) => TextField(controller: c, minLines: lines, maxLines: lines == 1 ? 1 : 5, onSubmitted: onSub, style: TextStyle(color: pal.tx, fontFamily: 'Vazirmatn'), decoration: deco(hint));
+
+void toast(String m) {
+  final s = msgKey.currentState;
+  if (s == null) return;
+  s.hideCurrentSnackBar();
+  s.showSnackBar(SnackBar(content: Text(fa(m), style: TextStyle(color: pal.bg, fontFamily: 'Vazirmatn')), backgroundColor: pal.tx, behavior: SnackBarBehavior.floating, duration: const Duration(milliseconds: 2200)));
+}
+
+Future<bool> confirm(BuildContext c, String title, String sub) async {
+  final r = await showDialog<bool>(
+    context: c,
+    builder: (dc) => AlertDialog(
+      backgroundColor: pal.card,
+      title: tx(title, w: FontWeight.bold),
+      content: tx('«$sub»\nاین کار قابل بازگشت نیست.', color: pal.mut),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dc, false), child: tx('انصراف', color: pal.mut)),
+        TextButton(onPressed: () => Navigator.pop(dc, true), child: tx('بله، حذف شود', color: pal.red)),
+      ],
+    ),
+  );
+  return r == true;
+}
+
+Future<T?> sheet<T>(BuildContext c, WidgetBuilder b) => showModalBottomSheet<T>(
+      context: c,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: pal.card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: b,
+    );
+
+Widget sheetBody(BuildContext c, List<Widget> children) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+    child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children)));
+
+Widget sheetHead(BuildContext c, String t) => Row(children: [Expanded(child: tx(t, size: 17, w: FontWeight.bold)), ib(Icon(Icons.close, size: 18, color: pal.tx), () => Navigator.pop(c))]);
+
+String fmtCd(int ms) {
+  final s = (ms / 1000).ceil();
+  return '${pad(s ~/ 60)}:${pad(s % 60)}';
+}
+
+// ============================================================
+// آیتم‌های هر روز در تقویم
+// ============================================================
+List<Item> itemsOn(String d) {
+  final T = today();
+  final o = <Item>[];
+  for (final t in app.tasks) {
+    if (t.due == d) {
+      o.add(Item(t, 'live', d));
+    } else if (isRec(t)) {
+      if (t.log.contains(d)) {
+        o.add(Item(t, 'mdone', d));
+      } else if (d.compareTo(T) > 0 && occurs(t, d)) {
+        o.add(Item(t, 'plan', d));
+      }
+    }
+  }
+  o.sort((a, b) => byTime(a.t, b.t));
+  return o;
+}
+
+// ============================================================
+// کارت تسک
+// ============================================================
+Widget taskCard(BuildContext c, Task t, {String cls = '', bool nd = false}) {
+  final n = t.subs.length, cnt = t.subs.where((s) => s.done).length, s = st(t);
+  final ex = app.ex.contains(t.id), od = !t.completed && t.due.compareTo(today()) < 0, lt = late(t);
+  final al = alarmTxt(t.alarm), due = t.due == today() ? 'امروز' : jfmt(t.due);
+  final left = app.timerLeft(t.id);
+  final stripe = (cls == 'over' || lt) ? pal.red : cls == 'prog' ? pal.amb : cls == 'done' ? pal.grn : pal.bd;
+  return cardBox(
+    stripe: stripe,
+    bg: lt ? Color.alphaBlend(pal.red.withOpacity(.12), pal.card) : null,
+    op: s == 'done' ? .6 : 1,
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        if (n == 0) ...[chk(s == 'done', () => app.toggleChk(t)), const SizedBox(width: 10)],
+        Expanded(
+          child: tap(
+            () => app.toggleEx(t.id),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              tx(t.title, w: FontWeight.bold),
+              const SizedBox(height: 2),
+              Wrap(spacing: 10, children: [
+                if (!nd) tx(od ? 'عقب‌افتاده از $due' : '📅 $due', size: 12, color: od ? pal.red : pal.mut),
+                if (al.isNotEmpty) tx(al, size: 12, color: lt ? pal.red : pal.mut),
+              ]),
+            ]),
+          ),
+        ),
+        if (s != 'done') ib(const Text('⏳', style: TextStyle(fontSize: 17)), () => openTimerSheet(c, t)),
+      ]),
+      if (n > 0) ...[
+        const SizedBox(height: 10),
+        ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(value: cnt / n, minHeight: 6, backgroundColor: pal.card2, valueColor: AlwaysStoppedAnimation(pal.amb))),
+        const SizedBox(height: 5),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          tx('$cnt از $n مرحله', size: 12, color: pal.mut),
+          tx(s == 'prog' ? 'در حال انجام' : s == 'done' ? 'تکمیل' : 'شروع نشده', size: 12, color: pal.mut),
+        ]),
+      ],
+      if (left > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: tap(
+            () => app.cancelTimer(t.id),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3), decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(20)), child: tx('⏳ ${fmtCd(left)} · لغو', size: 12, color: pal.acc)),
+          ),
+        ),
+      if (ex)
+        Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.only(top: 10),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: pal.bd))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (t.note.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+                decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(10)),
+                child: Row(children: [
+                  Expanded(child: tx(t.note, size: 13, dir: RegExp(r'[\u0600-\u06FF]').hasMatch(t.note) ? TextDirection.rtl : TextDirection.ltr)),
+                  ib(Icon(Icons.copy, size: 16, color: pal.tx), () {
+                    Clipboard.setData(ClipboardData(text: t.note));
+                    toast('کپی شد');
+                  }, s: 32),
+                ]),
+              ),
+            for (final x in t.subs)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(children: [
+                  chk(x.done, () => app.toggleSub(t, x), s: 22),
+                  const SizedBox(width: 10),
+                  Expanded(child: tx(x.t, color: x.done ? pal.mut : null, deco: x.done ? TextDecoration.lineThrough : null)),
+                ]),
+              ),
+            const SizedBox(height: 8),
+            Row(children: [
+              btn('✎ ویرایش', () => openTaskForm(c, edit: t)),
+              const SizedBox(width: 8),
+              btn('حذف', () async {
+                if (await confirm(c, 'حذف این تسک؟', t.title)) app.deleteTask(t.id);
+              }, fg: pal.red),
+            ]),
+          ]),
+        ),
+    ]),
+  );
+}
+
+Widget mini(Item x) {
+  final t = x.t, pl = x.k == 'plan', ok = !pl && x.d.compareTo(today()) >= 0;
+  final al = alarmTxt(t.alarm);
+  return cardBox(
+    op: pl ? 1 : .6,
+    child: Row(children: [
+      ok ? chk(true, () => app.toggleOcc(t, x.d)) : Container(width: 10, height: 10, margin: const EdgeInsets.symmetric(horizontal: 8), decoration: BoxDecoration(color: pl ? pal.mut : pal.grn, shape: BoxShape.circle)),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          tx(t.title, w: FontWeight.bold),
+          Wrap(spacing: 10, children: [if (al.isNotEmpty) tx(al, size: 12, color: pal.mut), tx(pl ? 'برنامه‌ریزی‌شده' : 'انجام شد ✓', size: 12, color: pal.mut)]),
+        ]),
+      ),
+    ]),
+  );
+}
+
+// ============================================================
+// فرم تسک
+// ============================================================
+void openTaskForm(BuildContext ctx, {Task? edit}) {
+  final e = edit;
+  final t = e != null ? e.clone() : Task(id: uid(), title: '');
+  final tc = TextEditingController(text: t.title), nc = TextEditingController(text: t.note), sc = TextEditingController();
+  sheet<void>(
+    ctx,
+    (bc) => StatefulBuilder(builder: (bc, set) {
+      final a = t.alarm;
+
+      Future<void> pickTime() async {
+        final p = a.time.split(':');
+        final r = await showTimePicker(context: bc, initialTime: TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1])));
+        if (r != null) set(() => a.time = '${pad(r.hour)}:${pad(r.minute)}');
+      }
+
+      void addSub() {
+        final s = sc.text.trim();
+        if (s.isEmpty) return;
+        set(() {
+          t.subs.add(Sub(uid(), s));
+          sc.clear();
+        });
+      }
+
+      Future<void> pickTpl() async {
+        final id = await sheet<String>(
+          bc,
+          (pc) => sheetBody(pc, [
+            sheetHead(pc, 'انتخاب قالب'),
+            const SizedBox(height: 4),
+            tx('هر تسک فقط یک قالب دارد. با انتخاب قالب دیگر، مراحل قالب قبلی جایگزین می‌شود (مراحلی که خودت اضافه کرده‌ای می‌ماند).', size: 12, color: pal.mut),
+            const SizedBox(height: 12),
+            if (app.tpls.isEmpty) emptyBox('هنوز قالبی نساخته‌ای.\nاز تب «قالب‌ها» یکی بساز.'),
+            for (final p in app.tpls)
+              tap(
+                () => Navigator.pop(pc, p.id),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(16), border: Border.all(color: t.tpl == p.id ? pal.acc : Colors.transparent, width: 2)),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        tx(p.name, w: FontWeight.bold),
+                        tx('${p.steps.length} مرحله', size: 12, color: pal.mut),
+                        for (int i = 0; i < p.steps.length; i++) tx('${i + 1}. ${p.steps[i]}', size: 12, color: pal.mut),
+                      ]),
+                    ),
+                    Icon(t.tpl == p.id ? Icons.check_circle : Icons.add_circle_outline, color: pal.acc),
+                  ]),
+                ),
+              ),
+          ]),
+        );
+        if (id == null) return;
+        final p = app.tpls.firstWhere((x) => x.id == id);
+        set(() {
+          t.subs.removeWhere((s) => s.tp != null);
+          for (final x in p.steps) {
+            t.subs.add(Sub(uid(), x, tp: p.id));
+          }
+          t.tpl = p.id;
+        });
+      }
+
+      void save() {
+        final title = tc.text.trim();
+        if (title.isEmpty) return toast('عنوان تسک را وارد کن');
+        if (a.type == 'weekly' && a.days.isEmpty) return toast('حداقل یک روز هفته انتخاب کن');
+        if (a.type == 'monthly' && a.doms.isEmpty) return toast('حداقل یک روز ماه انتخاب کن');
+        t.title = title;
+        t.note = nc.text.trim();
+        t.completed = false;
+        if (a.type == 'once') {
+          t.due = a.date;
+        } else if (a.type == 'daily' || a.type == 'weekly' || a.type == 'monthly') {
+          t.due = nextOpen(t, today());
+        } else {
+          t.due = e?.due ?? today();
+        }
+        if (e != null) {
+          final i = app.tasks.indexWhere((x) => x.id == e.id);
+          if (i >= 0) app.tasks[i] = t;
+        } else {
+          app.tasks.insert(0, t);
+        }
+        app.save();
+        Navigator.pop(bc);
+      }
+
+      Widget timeBox() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            lbl('ساعت'),
+            tap(pickTime, Container(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(12)), child: tx(a.time, size: 16, w: FontWeight.bold, color: pal.acc))),
+          ]);
+
+      Widget dd<V>(V v, List<V> items, void Function(V) f, String Function(V) lab) => Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(12)),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<V>(
+                  value: v, isExpanded: true, dropdownColor: pal.card2,
+                  items: [for (final i in items) DropdownMenuItem<V>(value: i, child: tx(lab(i), size: 14))],
+                  onChanged: (x) {
+                    if (x != null) f(x);
+                  },
+                ),
+              ),
+            ),
+          );
+
+      Widget dateRow() {
+        final jd = jl(a.date), jn = jl(today());
+        final ys = <int>{jd[0], jn[0], jn[0] + 1, jn[0] + 2}.toList()..sort();
+        void setD(int y, int m, int d) => set(() => a.date = fromJ(y, m, d));
+        return Row(children: [
+          dd<int>(jd[2], List.generate(31, (i) => i + 1), (v) => setD(jd[0], jd[1], v), (v) => '$v'),
+          dd<int>(jd[1], List.generate(12, (i) => i + 1), (v) => setD(jd[0], v, jd[2]), (v) => MN[v - 1]),
+          dd<int>(jd[0], ys, (v) => setD(v, jd[1], jd[2]), (v) => '$v'),
+        ]);
+      }
+
+      Widget alarmUi() {
+        if (a.type == 'once') return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [lbl('تاریخ (شمسی)'), dateRow(), timeBox()]);
+        if (a.type == 'daily') return timeBox();
+        if (a.type == 'weekly') {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            lbl('روزهای هفته'),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final d in DORD) chip(DN[d], a.days.contains(d), () => set(() => a.days.contains(d) ? a.days.remove(d) : a.days.add(d))),
+            ]),
+            timeBox(),
+          ]);
+        }
+        if (a.type == 'monthly') {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            lbl('هر ماه شمسی در کدام روزها تکرار شود؟ (می‌توانی چند روز انتخاب کنی)'),
+            GridView.count(
+              crossAxisCount: 7, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 6, crossAxisSpacing: 6,
+              children: [
+                for (int d = 1; d <= 31; d++)
+                  tap(
+                    () => set(() => a.doms.contains(d) ? a.doms.remove(d) : a.doms.add(d)),
+                    Container(alignment: Alignment.center, decoration: BoxDecoration(color: a.doms.contains(d) ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(10)), child: tx('$d', size: 13, color: a.doms.contains(d) ? Colors.white : pal.mut)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            tx('اگر ماهی آن روز را نداشته باشد (مثلاً ۳۱ مهر)، آخرین روز همان ماه در نظر گرفته می‌شود.', size: 12, color: pal.mut),
+            timeBox(),
+          ]);
+        }
+        return const SizedBox.shrink();
+      }
+
+      final recOk = (a.type == 'daily') || (a.type == 'weekly' && a.days.isNotEmpty) || (a.type == 'monthly' && a.doms.isNotEmpty);
+      String? pv;
+      if (recOk) {
+        final n = nextOpen(t, today());
+        pv = '📅 اولین نوبت: ${DN[wd(n)]} ${jfmt(n)}';
+      }
+
+      return sheetBody(bc, [
+        sheetHead(bc, e != null ? 'ویرایش تسک' : 'تسک جدید'),
+        lbl('عنوان تسک *'),
+        field(tc, 'مثلاً: ویدیو کلاس جلسه ۶'),
+        lbl('یادداشت یا لینک'),
+        field(nc, 'اختیاری', lines: 2),
+        lbl('مراحل (چک‌لیست)'),
+        ReorderableListView(
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), buildDefaultDragHandles: false,
+          onReorder: (o, n) => set(() {
+            if (n > o) n--;
+            final x = t.subs.removeAt(o);
+            t.subs.insert(n, x);
+          }),
+          children: [
+            for (int i = 0; i < t.subs.length; i++)
+              Container(
+                key: ValueKey(t.subs[i].id),
+                color: pal.card,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  ReorderableDragStartListener(index: i, child: Padding(padding: const EdgeInsets.all(8), child: Icon(Icons.drag_handle, color: pal.mut))),
+                  Expanded(child: tx(t.subs[i].t)),
+                  tap(() => set(() => t.subs.removeAt(i)), Padding(padding: const EdgeInsets.all(8), child: Icon(Icons.close, size: 18, color: pal.red))),
+                ]),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: field(sc, 'مرحله جدید…', onSub: (_) => addSub())),
+          const SizedBox(width: 8),
+          ib(const Icon(Icons.add, color: Colors.white), addSub, s: 46),
+        ]),
+        const SizedBox(height: 10),
+        if (t.tpl != null && app.tpls.any((p) => p.id == t.tpl))
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+            decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(10)),
+            child: Row(children: [
+              Expanded(child: tx('▤ قالب: ${app.tpls.firstWhere((p) => p.id == t.tpl).name}', size: 13)),
+              btn('حذف قالب', () => set(() {
+                    t.subs.removeWhere((s) => s.tp != null);
+                    t.tpl = null;
+                  }), fg: pal.red),
+            ]),
+          ),
+        tap(pickTpl, Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 11), decoration: BoxDecoration(border: Border.all(color: pal.acc), borderRadius: BorderRadius.circular(12)), alignment: Alignment.center, child: tx(t.tpl != null ? '▤ تغییر قالب' : '▤ انتخاب از قالب آماده', color: pal.acc))),
+        lbl('یادآوری و تکرار'),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final x in const [['none', 'بدون آلارم'], ['once', 'یک‌بار'], ['daily', 'روزانه'], ['weekly', 'هفتگی'], ['monthly', 'ماهانه']]) chip(x[1], a.type == x[0], () => set(() => a.type = x[0])),
+        ]),
+        alarmUi(),
+        if (pv != null) Container(margin: const EdgeInsets.only(top: 14), padding: const EdgeInsets.all(10), width: double.infinity, decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(12)), child: tx(pv, size: 13, color: pal.acc)),
+        const SizedBox(height: 18),
+        btn('ذخیره تسک', save, bg: pal.acc, fg: Colors.white, wide: true),
+      ]);
+    }),
+  );
+}
+
+// ============================================================
+// تایمر سریع
+// ============================================================
+void openTimerSheet(BuildContext ctx, Task t) {
+  final cc = TextEditingController(text: '10');
+  bool custom = false;
+  sheet<void>(
+    ctx,
+    (bc) => StatefulBuilder(builder: (bc, set) {
+      void go(int m) {
+        app.startTimer(t.id, m);
+        Navigator.pop(bc);
+        toast('تایمر $m دقیقه‌ای فعال شد');
+      }
+
+      Widget o(String l, VoidCallback f) => Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: tap(f, Container(padding: const EdgeInsets.symmetric(vertical: 16), alignment: Alignment.center, decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(14)), child: tx(l, w: FontWeight.bold))),
+            ),
+          );
+
+      return sheetBody(bc, [
+        sheetHead(bc, '⏳ چند دقیقه دیگه یادم بنداز'),
+        tx(t.title, size: 13, color: pal.mut),
+        const SizedBox(height: 12),
+        Row(children: [o('۱۵ دقیقه دیگه', () => go(15)), o('۳۰ دقیقه دیگه', () => go(30))]),
+        Row(children: [o('۱ ساعت دیگه', () => go(60)), o('زمان دلخواه', () => set(() => custom = true))]),
+        if (custom) ...[
+          lbl('زمان دلخواه (دقیقه، عدد صحیح از ۱ به بالا)'),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: cc, keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9۰-۹]'))],
+                style: TextStyle(color: pal.tx, fontFamily: 'Vazirmatn'), decoration: deco('دقیقه'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ib(const Icon(Icons.check, color: Colors.white), () {
+              final v = int.tryParse(toEn(cc.text));
+              if (v == null || v < 1) return toast('یک عدد صحیح، از ۱ دقیقه به بالا وارد کن');
+              go(v);
+            }, s: 46),
+          ]),
+        ],
+      ]);
+    }),
+  );
+}
+
+// ============================================================
+// فرم قالب
+// ============================================================
+void openTplForm(BuildContext ctx, {Tpl? edit}) {
+  final e = edit;
+  final nc = TextEditingController(text: e?.name ?? '');
+  final cs = <TextEditingController>[for (final s in (e?.steps ?? <String>[''])) TextEditingController(text: s)];
+  sheet<void>(
+    ctx,
+    (bc) => StatefulBuilder(builder: (bc, set) {
+      void save() {
+        final nm = nc.text.trim();
+        final steps = cs.map((c) => c.text.trim()).where((x) => x.isNotEmpty).toList();
+        if (nm.isEmpty || steps.isEmpty) return toast('نام و حداقل یک مرحله لازم است');
+        if (e != null) {
+          e.name = nm;
+          e.steps = steps;
+        } else {
+          app.tpls.add(Tpl(uid(), nm, steps));
+        }
+        app.save();
+        Navigator.pop(bc);
+        toast('قالب ذخیره شد');
+      }
+
+      return sheetBody(bc, [
+        sheetHead(bc, e != null ? 'ویرایش قالب' : 'قالب جدید'),
+        lbl('نام قالب'),
+        field(nc, 'مثلاً: پروسه ویدیو کلاس'),
+        lbl('مراحل ثابت (به ترتیب)'),
+        ReorderableListView(
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), buildDefaultDragHandles: false,
+          onReorder: (o, n) => set(() {
+            if (n > o) n--;
+            final x = cs.removeAt(o);
+            cs.insert(n, x);
+          }),
+          children: [
+            for (int i = 0; i < cs.length; i++)
+              Container(
+                key: ObjectKey(cs[i]),
+                color: pal.card,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  ReorderableDragStartListener(index: i, child: Padding(padding: const EdgeInsets.all(8), child: Icon(Icons.drag_handle, color: pal.mut))),
+                  Expanded(child: field(cs[i], 'مرحله ${i + 1}')),
+                  tap(() => set(() => cs.removeAt(i)), Padding(padding: const EdgeInsets.all(8), child: Icon(Icons.close, size: 18, color: pal.red))),
+                ]),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        tap(() => set(() => cs.add(TextEditingController())), Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 11), decoration: BoxDecoration(border: Border.all(color: pal.acc), borderRadius: BorderRadius.circular(12)), alignment: Alignment.center, child: tx('+ افزودن مرحله', color: pal.acc))),
+        const SizedBox(height: 16),
+        btn('ذخیره قالب', save, bg: pal.acc, fg: Colors.white, wide: true),
+        if (e != null) ...[
+          const SizedBox(height: 8),
+          btn('حذف قالب', () async {
+            if (await confirm(bc, 'حذف این قالب؟', e.name)) {
+              app.tpls.removeWhere((p) => p.id == e.id);
+              app.save();
+              if (bc.mounted) Navigator.pop(bc);
+              toast('قالب حذف شد');
+            }
+          }, fg: pal.red, wide: true),
+        ],
+      ]);
+    }),
+  );
+}
+
+// ============================================================
+// تب تقویم
+// ============================================================
+class CalTab extends StatefulWidget {
+  const CalTab({super.key});
+  @override
+  State<CalTab> createState() => _CalState();
+}
+
+class _CalState extends State<CalTab> {
+  String date = today();
+  bool week = false;
+  int dir = 1;
+
+  String wStart(String d) => addD(d, -((wd(d) + 1) % 7));
+
+  void step(int n) => setState(() {
+        date = addD(date, n * (week ? 7 : 1));
+        dir = n;
+      });
+
+  Widget segBtn(String l, bool on, VoidCallback f) => tap(f, Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7), decoration: BoxDecoration(color: on ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(12)), child: tx(l, size: 13, color: on ? Colors.white : pal.mut)));
+
+  Widget stripDay(String x) {
+    final T = today(), on = x == date;
+    final fg = on ? Colors.white : null;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: tap(
+          () => setState(() {
+            dir = x.compareTo(date) > 0 ? 1 : -1;
+            date = x;
+          }),
+          Container(
+            padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+            decoration: BoxDecoration(color: on ? pal.acc : pal.card, borderRadius: BorderRadius.circular(14)),
+            child: Column(children: [
+              FittedBox(fit: BoxFit.scaleDown, child: tx(DN[wd(x)], size: 10, color: on ? Colors.white : pal.mut)),
+              tx('${jl(x)[2]}', size: 16, w: FontWeight.bold, color: fg ?? (x == T ? pal.acc : pal.tx)),
+              Text(itemsOn(x).isNotEmpty ? '●' : ' ', style: TextStyle(fontSize: 8, color: on ? Colors.white : pal.acc)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget weekRow(Item w, String x, VoidCallback go) {
+    final t = w.t, n = t.subs.length, cnt = t.subs.where((q) => q.done).length;
+    final dn = w.k == 'mdone' || (w.k == 'live' && t.completed), od = w.k == 'live' && !t.completed && x.compareTo(today()) < 0;
+    return tap(
+      go,
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          SizedBox(width: 46, child: tx(tmOf(t).isEmpty ? '—' : tmOf(t), size: 12, color: od ? pal.red : pal.mut)),
+          Expanded(child: tx(t.title, size: 14, color: dn ? pal.mut : null, deco: dn ? TextDecoration.lineThrough : null)),
+          if (n > 0) tx('$cnt/$n', size: 12, color: pal.amb),
+          const SizedBox(width: 6),
+          tx(dn ? '✓' : od ? '⚠️' : isRec(t) ? '🔁' : '', size: 13),
+        ]),
+      ),
+    );
+  }
+
+  Widget weekDay(String x) {
+    final it = itemsOn(x);
+    void go() => setState(() {
+          date = x;
+          week = false;
+        });
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      decoration: BoxDecoration(color: pal.card, borderRadius: BorderRadius.circular(16), border: x == today() ? Border.all(color: pal.acc, width: 2) : null),
+      child: Column(children: [
+        tap(go, Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [tx('${DN[wd(x)]} ${jfmt(x)}', size: 14), tx(it.isEmpty ? '—' : '${it.length} تسک', size: 12, color: pal.mut)]))),
+        Container(height: 1, color: pal.bd),
+        for (final w in it) weekRow(w, x, go),
+      ]),
+    );
+  }
+
+  Widget dayBody(BuildContext c, String d) {
+    final T = today(), it = itemsOn(d);
+    final lv = [for (final x in it) if (x.k == 'live') x.t];
+    final mn = [for (final x in it) if (x.k != 'live') x];
+    final out = <Widget>[];
+    if (d == T) {
+      final ov = app.tasks.where((t) => !t.completed && t.due.compareTo(T) < 0).toList()..sort((a, b) => a.due != b.due ? a.due.compareTo(b.due) : byTime(a, b));
+      final act = lv.where((t) => !t.completed).toList();
+      final pr = act.where((t) => st(t) == 'prog').toList(), nw = act.where((t) => st(t) != 'prog').toList();
+      final dn = <Widget>[for (final t in lv.where((t) => t.completed)) taskCard(c, t, cls: 'done', nd: true), for (final x in mn) mini(x)];
+      if (ov.isNotEmpty) {
+        out.add(secH('عقب‌افتاده', pal.red, ov.length));
+        out.addAll(ov.map((t) => taskCard(c, t, cls: 'over')));
+      }
+      if (pr.isNotEmpty) {
+        out.add(secH('در حال انجام', pal.amb, pr.length));
+        out.addAll(pr.map((t) => taskCard(c, t, cls: 'prog', nd: true)));
+      }
+      if (nw.isNotEmpty) {
+        out.add(secH('کارهای امروز', pal.acc, nw.length));
+        out.addAll(nw.map((t) => taskCard(c, t, nd: true)));
+      }
+      if (dn.isNotEmpty) {
+        out.add(secH('انجام‌شده / برنامه‌ی امروز', pal.grn, dn.length));
+        out.addAll(dn);
+      }
+    } else {
+      out.addAll(lv.map((t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')), nd: true)));
+      out.addAll(mn.map(mini));
+    }
+    return out.isEmpty ? emptyBox('📭\nبرای این روز تسکی نیست.') : Column(children: out);
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final T = today(), ws = wStart(date), we = addD(ws, 6);
+    final away = week ? (T.compareTo(ws) < 0 || T.compareTo(we) > 0) : date != T;
+    final title = week ? '${jfmt(ws)} تا ${jfmt(we)}' : '${DN[wd(date)]} ${jfmt(date)} ${jl(date)[0]}';
+    final body = week ? Column(children: [for (int i = 0; i < 7; i++) weekDay(addD(ws, i))]) : dayBody(c, date);
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v.abs() > 300) step(v > 0 ? 1 : -1); // کشیدن از چپ به راست = جلو
+      },
+      child: ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
+        Row(children: [
+          tx('تقویم', size: 22, w: FontWeight.bold),
+          const SizedBox(width: 14),
+          segBtn('روز', !week, () => setState(() => week = false)),
+          const SizedBox(width: 6),
+          segBtn('هفته', week, () => setState(() => week = true)),
+        ]),
+        if (!week) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Row(children: [for (int i = 0; i < 7; i++) stripDay(addD(date, i - 3))])) else const SizedBox(height: 12),
+        Row(children: [
+          ib(glyph('‹'), () => step(-1)),
+          Expanded(
+            child: Column(children: [
+              tx(title, w: FontWeight.bold, align: TextAlign.center),
+              if (away)
+                Padding(padding: const EdgeInsets.only(top: 4), child: btn('برگرد به امروز', () => setState(() {
+                      date = T;
+                      dir = 1;
+                    }), p: const EdgeInsets.symmetric(horizontal: 12, vertical: 3)))
+              else
+                tx(week ? 'هفته‌ی جاری' : 'امروز', size: 12, color: pal.mut),
+            ]),
+          ),
+          ib(glyph('›'), () => step(1)),
+        ]),
+        const SizedBox(height: 4),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          transitionBuilder: (w, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: Offset(dir * -0.08, 0), end: Offset.zero).animate(a), child: w)),
+          child: SizedBox(key: ValueKey('$week$date'), width: double.infinity, child: body),
+        ),
+      ]),
+    );
+  }
+}
+
+// ============================================================
+// تب همه تسک‌ها
+// ============================================================
+class AllTab extends StatefulWidget {
+  const AllTab({super.key});
+  @override
+  State<AllTab> createState() => _AllState();
+}
+
+class _AllState extends State<AllTab> {
+  String fil = 'all';
+
+  Widget dvd(String label, {Color? col, bool big = false}) => Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 8),
+        child: Row(children: [
+          Expanded(child: Container(height: 1, color: (col ?? pal.bd).withOpacity(col != null ? .5 : 1))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: tx(label, size: big ? 14 : 13, w: big ? FontWeight.bold : null, color: col ?? (big ? pal.tx : pal.mut))),
+          Expanded(child: Container(height: 1, color: (col ?? pal.bd).withOpacity(col != null ? .5 : 1))),
+        ]),
+      );
+
+  List<List<dynamic>> grp(List<Task> a, {bool desc = false}) {
+    final m = <String, List<Task>>{};
+    for (final t in a) {
+      (m[t.due] ??= []).add(t);
+    }
+    final keys = m.keys.toList()..sort((x, y) => desc ? y.compareTo(x) : x.compareTo(y));
+    return [for (final k in keys) [k, (m[k]!..sort(byTime))]];
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final T = today();
+    bool f(Task t) => fil == 'all' ? true : fil == 'normal' ? !isRec(t) : fil == 'rec' ? isRec(t) : t.completed;
+    final L = app.tasks.where(f).where((t) => fil == 'done' || !t.completed).toList();
+    final act = L.where((t) => !t.completed).toList(), dn = L.where((t) => t.completed).toList();
+    final od = act.where((t) => t.due.compareTo(T) < 0).toList(), up = act.where((t) => t.due.compareTo(T) >= 0).toList();
+    Widget fr(Task t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')), nd: true);
+    String dl(String k) => '${k == T ? 'امروز · ' : ''}${DN[wd(k)]} ${jfmt(k)}${jl(k)[0] != jl(T)[0] ? ' ${jl(k)[0]}' : ''}';
+    const ch = [['all', 'همه'], ['normal', 'عادی'], ['rec', 'تکرارشونده / روتین'], ['done', 'انجام‌شده']];
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
+      tx('همه تسک‌ها', size: 22, w: FontWeight.bold),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, children: [for (final x in ch) chip(x[1], fil == x[0], () => setState(() => fil = x[0]))]),
+      if (od.isNotEmpty) ...[
+        dvd('⚠️ از موعد گذشته', col: pal.red, big: true),
+        for (final g in grp(od)) ...[dvd(dl(g[0] as String), col: pal.red), ...(g[1] as List<Task>).map(fr)],
+      ],
+      for (final g in grp(up)) ...[dvd(dl(g[0] as String)), ...(g[1] as List<Task>).map(fr)],
+      if (dn.isNotEmpty) ...[
+        dvd('✓ انجام‌شده', big: true),
+        for (final g in grp(dn, desc: true)) ...[dvd(dl(g[0] as String)), ...(g[1] as List<Task>).map(fr)],
+      ],
+      if (L.isEmpty) emptyBox('موردی نیست.'),
+    ]);
+  }
+}
+
+// ============================================================
+// تب قالب‌ها
+// ============================================================
+class TplTab extends StatelessWidget {
+  const TplTab({super.key});
+  @override
+  Widget build(BuildContext c) => ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
+        tx('قالب‌ها', size: 22, w: FontWeight.bold),
+        tx('مراحل ثابت کارهای تکراری را یک‌بار بساز و هر جا خواستی استفاده کن.', size: 13, color: pal.mut),
+        const SizedBox(height: 14),
+        for (final p in app.tpls)
+          tap(
+            () => openTplForm(c, edit: p),
+            cardBox(
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [tx(p.name, w: FontWeight.bold), tx(p.steps.join(' ← '), size: 12, color: pal.mut)])),
+                Icon(Icons.edit, size: 18, color: pal.mut),
+              ]),
+            ),
+          ),
+        const SizedBox(height: 8),
+        btn('+ قالب جدید', () => openTplForm(c), bg: pal.acc, fg: Colors.white, wide: true),
+      ]);
+}
+
+// ============================================================
+// تب تنظیمات و پشتیبان‌گیری
+// ============================================================
+Future<void> exportBackup() async {
+  try {
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}/task_backup_${today()}.json');
+    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(app.toJson()));
+    await Share.shareXFiles([XFile(f.path)], text: 'پشتیبان وظایف من');
+  } catch (_) {
+    toast('ساخت فایل پشتیبان ناموفق بود');
+  }
+}
+
+Future<void> importBackup(BuildContext c) async {
+  final ok = await showDialog<bool>(
+    context: c,
+    builder: (dc) => AlertDialog(
+      backgroundColor: pal.card,
+      title: tx('بازگردانی اطلاعات', w: FontWeight.bold),
+      content: tx('اطلاعات فعلی با محتوای فایل پشتیبان جایگزین می‌شود. ادامه می‌دهی؟', color: pal.mut),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dc, false), child: tx('انصراف', color: pal.mut)),
+        TextButton(onPressed: () => Navigator.pop(dc, true), child: tx('انتخاب فایل', color: pal.acc)),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  try {
+    final r = await FilePicker.platform.pickFiles(type: FileType.any);
+    final path = r?.files.single.path;
+    if (path == null) return;
+    app.apply(jsonDecode(await File(path).readAsString()));
+    app.save();
+    toast('اطلاعات بازگردانی شد ✓');
+  } catch (_) {
+    toast('فایل پشتیبان معتبر نیست');
+  }
+}
+
+class SetTab extends StatelessWidget {
+  const SetTab({super.key});
+  @override
+  Widget build(BuildContext c) => ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
+        tx('تنظیمات', size: 22, w: FontWeight.bold),
+        const SizedBox(height: 14),
+        cardBox(
+          child: Row(children: [
+            Expanded(child: tx('حالت تاریک', w: FontWeight.bold)),
+            Switch(value: app.dark, activeColor: pal.acc, onChanged: (v) {
+              app.dark = v;
+              app.save();
+            }),
+          ]),
+        ),
+        cardBox(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            tx('پشتیبان‌گیری و بازگردانی', w: FontWeight.bold),
+            const SizedBox(height: 4),
+            tx('فایل JSON می‌سازد و با «اشتراک‌گذاری» می‌توانی آن را در فایل‌های گوشی، تلگرام یا Drive ذخیره کنی.', size: 12, color: pal.mut),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [btn('⬇ ساخت فایل پشتیبان', exportBackup), btn('⬆ بازگردانی از فایل', () => importBackup(c))]),
+          ]),
+        ),
+        cardBox(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            tx('یادآوری‌ها', w: FontWeight.bold),
+            const SizedBox(height: 4),
+            tx('اگر یادآورها با تأخیر آمدند، در تنظیمات گوشی «بهینه‌سازی باتری» را برای این برنامه روی «بدون محدودیت» بگذار.', size: 12, color: pal.mut),
+          ]),
+        ),
+        cardBox(
+          child: btn('حذف همه اطلاعات', () async {
+            if (await confirm(c, 'حذف همه اطلاعات؟', 'همه تسک‌ها و قالب‌ها')) {
+              app.seed();
+              app.save();
+              toast('همه اطلاعات پاک شد');
+            }
+          }, fg: pal.red),
+        ),
+      ]);
+}
+
+// ============================================================
+// صفحه اصلی و شروع برنامه
+// ============================================================
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomeState();
+}
+
+class _HomeState extends State<HomePage> with WidgetsBindingObserver {
+  int tab = 0, calReset = 0;
+  Timer? tk;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    tk = Timer.periodic(const Duration(seconds: 1), (_) => app.tick());
+    WidgetsBinding.instance.addPostFrameCallback((_) => askPerms());
+  }
+
+  @override
+  void dispose() {
+    tk?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) app.load();
+  }
+
+  @override
+  Widget build(BuildContext c) => ListenableBuilder(
+        listenable: app,
+        builder: (c, _) {
+          final pages = <Widget>[CalTab(key: ValueKey('cal$calReset')), AllTab(), TplTab(), SetTab()];
+          const ics = [Icons.calendar_month, Icons.checklist, Icons.view_list, Icons.settings];
+          const lbs = ['تقویم', 'همه تسک‌ها', 'قالب‌ها', 'تنظیمات'];
+          return Scaffold(
+            backgroundColor: pal.bg,
+            body: SafeArea(bottom: false, child: pages[tab]),
+            floatingActionButton: tab < 2 ? FloatingActionButton(onPressed: () => openTaskForm(c), backgroundColor: pal.acc, foregroundColor: Colors.white, child: const Icon(Icons.add, size: 30)) : null,
+            bottomNavigationBar: Container(
+              color: pal.card,
+              child: SafeArea(
+                top: false,
+                child: Row(children: [
+                  for (int i = 0; i < 4; i++)
+                    Expanded(
+                      child: tap(
+                        () => setState(() {
+                          if (i == 0 && tab == 0) calReset++;
+                          tab = i;
+                        }),
+                        Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(ics[i], color: tab == i ? pal.acc : pal.mut), tx(lbs[i], size: 11, color: tab == i ? pal.acc : pal.mut)])),
+                      ),
+                    ),
+                ]),
+              ),
+            ),
+          );
+        },
+      );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext c) => ListenableBuilder(
+        listenable: app,
+        builder: (c, _) => MaterialApp(
+          debugShowCheckedModeBanner: false,
+          scaffoldMessengerKey: msgKey,
+          title: 'وظایف من',
+          locale: const Locale('fa'),
+          supportedLocales: const [Locale('fa')],
+          localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+          theme: ThemeData(
+            useMaterial3: true,
+            fontFamily: 'Vazirmatn',
+            scaffoldBackgroundColor: pal.bg,
+            colorScheme: ColorScheme.fromSeed(seedColor: pal.acc, brightness: app.dark ? Brightness.dark : Brightness.light),
+          ),
+          home: const HomePage(),
+        ),
+      );
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initNotif();
+  await app.load();
+  runApp(const MyApp());
+}
