@@ -51,12 +51,29 @@ jobs:
           flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
           rm -rf app_build/test app_build/lib
           python3 - <<'PYA'
-          import io, re, os
+          import io, re, os, unicodedata
           src = 'main.dart' if os.path.exists('main.dart') else 'lib/main.dart'
+          print('source file:', src)
           s = io.open(src, encoding='utf-8').read()
-          # پاک‌سازی نویسه‌های نامرئی که هنگام کپی/پیست در گوشی وارد می‌شوند
-          s = re.sub('[\u00a0\u2007\u202f\u2028\u2029]', ' ', s)
-          s = re.sub('[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]', '', s)
+          # نیم‌فاصله‌ی درست بین حروف فارسی حفظ شود
+          s = re.sub('(?<=[\u0600-\u06ff])\u200c(?=[\u0600-\u06ff])', '\ue000', s)
+          out, removed = [], []
+          for n, line in enumerate(s.split('\n'), 1):
+              buf = ''
+              for ch in line:
+                  cat = unicodedata.category(ch)
+                  if ch in '\t\r' or ch == '\ue000':
+                      buf += ch
+                  elif cat in ('Cf', 'Cc', 'Zl', 'Zp'):
+                      removed.append((n, hex(ord(ch))))
+                  elif cat == 'Zs' and ch != ' ':
+                      buf += ' '
+                      removed.append((n, hex(ord(ch))))
+                  else:
+                      buf += ch
+              out.append(buf)
+          s = '\n'.join(out).replace('\ue000', '\u200c')
+          print('removed invisible chars (line, code):', removed[:60])
           os.makedirs('app_build/lib', exist_ok=True)
           io.open('app_build/lib/main.dart', 'w', encoding='utf-8').write(s)
           PYA
