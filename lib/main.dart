@@ -683,10 +683,10 @@ List<Item> itemsOn(String d) {
 // ============================================================
 // کارت تسک
 // ============================================================
-Widget taskCard(BuildContext c, Task t, {String cls = '', bool nd = false}) {
+Widget taskCard(BuildContext c, Task t, {String cls = ''}) {
   final n = t.subs.length, cnt = t.subs.where((s) => s.done).length, s = st(t);
   final ex = app.ex.contains(t.id), od = !t.completed && t.due.compareTo(today()) < 0, lt = late(t);
-  final al = alarmTxt(t.alarm), due = t.due == today() ? 'امروز' : jfmt(t.due);
+  final al = t.alarm.type == 'once' ? '🔔 ساعت ${t.alarm.time}' : alarmTxt(t.alarm), due = t.due == today() ? 'امروز' : jfmt(t.due);
   final left = app.timerLeft(t.id);
   final stripe = (cls == 'over' || lt) ? pal.red : cls == 'prog' ? pal.amb : cls == 'done' ? pal.grn : pal.bd;
   return cardBox(
@@ -703,7 +703,7 @@ Widget taskCard(BuildContext c, Task t, {String cls = '', bool nd = false}) {
               tx(t.title, w: FontWeight.bold),
               const SizedBox(height: 2),
               Wrap(spacing: 10, children: [
-                if (!nd) tx(od ? 'عقب‌افتاده از $due' : '📅 $due', size: 12, color: od ? pal.red : pal.mut),
+                tx(od ? 'عقب‌افتاده از $due' : jfmt(t.due), size: 12, color: od ? pal.red : pal.mut),
                 if (al.isNotEmpty) tx(al, size: 12, color: lt ? pal.red : pal.mut),
               ]),
             ]),
@@ -781,7 +781,7 @@ Widget mini(Item x) {
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           tx(t.title, w: FontWeight.bold),
-          Wrap(spacing: 10, children: [if (al.isNotEmpty) tx(al, size: 12, color: pal.mut), tx(pl ? 'برنامه‌ریزی‌شده' : 'انجام شد ✓', size: 12, color: pal.mut)]),
+          Wrap(spacing: 10, children: [tx(jfmt(x.d), size: 12, color: pal.mut), if (al.isNotEmpty) tx(al, size: 12, color: pal.mut), tx(pl ? 'برنامه‌ریزی‌شده' : 'انجام شد ✓', size: 12, color: pal.mut)]),
         ]),
       ),
     ]),
@@ -794,6 +794,7 @@ Widget mini(Item x) {
 void openTaskForm(BuildContext ctx, {Task? edit}) {
   final e = edit;
   final t = e != null ? e.clone() : Task(id: uid(), title: '');
+  if (t.alarm.type == 'none') t.alarm.date = t.due;
   final tc = TextEditingController(text: t.title), nc = TextEditingController(text: t.note), sc = TextEditingController();
   sheet<void>(
     ctx,
@@ -864,13 +865,7 @@ void openTaskForm(BuildContext ctx, {Task? edit}) {
         t.title = title;
         t.note = nc.text.trim();
         t.completed = false;
-        if (a.type == 'once') {
-          t.due = a.date;
-        } else if (a.type == 'daily' || a.type == 'weekly' || a.type == 'monthly') {
-          t.due = nextOpen(t, today());
-        } else {
-          t.due = e?.due ?? today();
-        }
+        t.due = isRec(t) ? nextOpen(t, today()) : a.date;
         if (e != null) {
           final i = app.tasks.indexWhere((x) => x.id == e.id);
           if (i >= 0) app.tasks[i] = t;
@@ -915,6 +910,7 @@ void openTaskForm(BuildContext ctx, {Task? edit}) {
       }
 
       Widget alarmUi() {
+        if (a.type == 'none') return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [lbl('تاریخ (شمسی)'), dateRow()]);
         if (a.type == 'once') return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [lbl('تاریخ (شمسی)'), dateRow(), timeBox()]);
         if (a.type == 'daily') return timeBox();
         if (a.type == 'weekly') {
@@ -1150,28 +1146,58 @@ class CalTab extends StatefulWidget {
 class _CalState extends State<CalTab> {
   String date = today();
   bool week = false;
-  int dir = 1;
+  static const _firstPage = 100000;
+  final PageController _pages = PageController(initialPage: _firstPage);
+  String _anchor = today();
+  int _page = _firstPage;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  String pageDate(int index) => addD(_anchor, (index - _firstPage) * (week ? 7 : 1));
+
+  void showDate(String value) {
+    final days = pd(value).difference(pd(_anchor)).inDays;
+    final target = _firstPage + (week ? days ~/ 7 : days);
+    _pages.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void showWeek(bool value, {String? selected}) {
+    if (week == value) return;
+    _pages.jumpToPage(_page);
+    setState(() {
+      date = selected ?? date;
+      week = value;
+      // Keep the selected date on the current page when the page size changes.
+      _anchor = addD(date, -(_page - _firstPage) * (week ? 7 : 1));
+    });
+  }
 
   String wStart(String d) => addD(d, -((wd(d) + 1) % 7));
 
-  void step(int n) => setState(() {
-        date = addD(date, n * (week ? 7 : 1));
-        dir = n;
-      });
+  void step(int n) => _pages.animateToPage(
+    _page + n,
+    duration: const Duration(milliseconds: 300),
+    curve: Curves.easeOutCubic,
+  );
 
   Widget segBtn(String l, bool on, VoidCallback f) => tap(f, Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7), decoration: BoxDecoration(color: on ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(12)), child: tx(l, size: 13, color: on ? Colors.white : pal.mut)));
 
-  Widget stripDay(String x) {
-    final T = today(), on = x == date;
+  Widget stripDay(String x, String selected) {
+    final T = today(), on = x == selected;
     final fg = on ? Colors.white : null;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: tap(
-          () => setState(() {
-            dir = x.compareTo(date) > 0 ? 1 : -1;
-            date = x;
-          }),
+          () => showDate(x),
           Container(
             padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
             decoration: BoxDecoration(color: on ? pal.acc : pal.card, borderRadius: BorderRadius.circular(14)),
@@ -1206,10 +1232,7 @@ class _CalState extends State<CalTab> {
 
   Widget weekDay(String x) {
     final it = itemsOn(x);
-    void go() => setState(() {
-          date = x;
-          week = false;
-        });
+    void go() => showWeek(false, selected: x);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -1231,61 +1254,43 @@ class _CalState extends State<CalTab> {
       final ov = app.tasks.where((t) => !t.completed && t.due.compareTo(T) < 0).toList()..sort((a, b) => a.due != b.due ? a.due.compareTo(b.due) : byTime(a, b));
       final act = lv.where((t) => !t.completed).toList();
       final pr = act.where((t) => st(t) == 'prog').toList(), nw = act.where((t) => st(t) != 'prog').toList();
-      final dn = <Widget>[for (final t in lv.where((t) => t.completed)) taskCard(c, t, cls: 'done', nd: true), for (final x in mn) mini(x)];
+      final dn = <Widget>[for (final t in lv.where((t) => t.completed)) taskCard(c, t, cls: 'done'), for (final x in mn) mini(x)];
       if (ov.isNotEmpty) {
         out.add(secH('عقب‌افتاده', pal.red, ov.length));
         out.addAll(ov.map((t) => taskCard(c, t, cls: 'over')));
       }
       if (pr.isNotEmpty) {
         out.add(secH('در حال انجام', pal.amb, pr.length));
-        out.addAll(pr.map((t) => taskCard(c, t, cls: 'prog', nd: true)));
+        out.addAll(pr.map((t) => taskCard(c, t, cls: 'prog')));
       }
       if (nw.isNotEmpty) {
         out.add(secH('کارهای امروز', pal.acc, nw.length));
-        out.addAll(nw.map((t) => taskCard(c, t, nd: true)));
+        out.addAll(nw.map((t) => taskCard(c, t)));
       }
       if (dn.isNotEmpty) {
         out.add(secH('انجام‌شده / برنامه‌ی امروز', pal.grn, dn.length));
         out.addAll(dn);
       }
     } else {
-      out.addAll(lv.map((t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')), nd: true)));
+      out.addAll(lv.map((t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')))));
       out.addAll(mn.map(mini));
     }
     return out.isEmpty ? emptyBox('📭\nبرای این روز تسکی نیست.') : Column(children: out);
   }
 
-  @override
-  Widget build(BuildContext c) {
-    final T = today(), ws = wStart(date), we = addD(ws, 6);
-    final away = week ? (T.compareTo(ws) < 0 || T.compareTo(we) > 0) : date != T;
-    final title = week ? '${jfmt(ws)} تا ${jfmt(we)}' : '${DN[wd(date)]} ${jfmt(date)} ${jl(date)[0]}';
-    final body = week ? Column(children: [for (int i = 0; i < 7; i++) weekDay(addD(ws, i))]) : dayBody(c, date);
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragEnd: (d) {
-        final v = d.primaryVelocity ?? 0;
-        if (v.abs() > 300) step(v > 0 ? 1 : -1); // کشیدن از چپ به راست = جلو
-      },
-      child: ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
-        Row(children: [
-          tx('تقویم', size: 22, w: FontWeight.bold),
-          const SizedBox(width: 14),
-          segBtn('روز', !week, () => setState(() => week = false)),
-          const SizedBox(width: 6),
-          segBtn('هفته', week, () => setState(() => week = true)),
-        ]),
-        if (!week) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Row(children: [for (int i = 0; i < 7; i++) stripDay(addD(date, i - 3))])) else const SizedBox(height: 12),
+  Widget calendarPage(BuildContext c, String d) {
+    final T = today(), ws = wStart(d), we = addD(ws, 6);
+    final away = week ? (T.compareTo(ws) < 0 || T.compareTo(we) > 0) : d != T;
+    final title = week ? '${jfmt(ws)} تا ${jfmt(we)}' : '${DN[wd(d)]} ${jfmt(d)} ${jl(d)[0]}';
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 110), children: [
+        if (!week) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Row(children: [for (int i = 0; i < 7; i++) stripDay(addD(d, i - 3), d)])) else const SizedBox(height: 12),
         Row(children: [
           ib(glyph('‹'), () => step(-1)),
           Expanded(
             child: Column(children: [
               tx(title, w: FontWeight.bold, align: TextAlign.center),
               if (away)
-                Padding(padding: const EdgeInsets.only(top: 4), child: btn('برگرد به امروز', () => setState(() {
-                      date = T;
-                      dir = 1;
-                    }), p: const EdgeInsets.symmetric(horizontal: 12, vertical: 3)))
+                Padding(padding: const EdgeInsets.only(top: 4), child: btn('برگرد به امروز', () => showDate(T), p: const EdgeInsets.symmetric(horizontal: 12, vertical: 3)))
               else
                 tx(week ? 'هفته‌ی جاری' : 'امروز', size: 12, color: pal.mut),
             ]),
@@ -1293,14 +1298,31 @@ class _CalState extends State<CalTab> {
           ib(glyph('›'), () => step(1)),
         ]),
         const SizedBox(height: 4),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          transitionBuilder: (w, a) => FadeTransition(opacity: a, child: SlideTransition(position: Tween<Offset>(begin: Offset(dir * -0.08, 0), end: Offset.zero).animate(a), child: w)),
-          child: SizedBox(key: ValueKey('$week$date'), width: double.infinity, child: body),
-        ),
-      ]),
-    );
+        if (week) ...[for (int i = 0; i < 7; i++) weekDay(addD(ws, i))] else dayBody(c, d),
+      ]);
   }
+
+  @override
+  Widget build(BuildContext c) => Column(children: [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+      child: Row(children: [
+        tx('تقویم', size: 22, w: FontWeight.bold),
+        const SizedBox(width: 14),
+        segBtn('روز', !week, () => showWeek(false)),
+        const SizedBox(width: 6),
+        segBtn('هفته', week, () => showWeek(true)),
+      ]),
+    ),
+    Expanded(child: PageView.builder(
+      controller: _pages,
+      onPageChanged: (index) => setState(() {
+        _page = index;
+        date = pageDate(index);
+      }),
+      itemBuilder: (c, index) => calendarPage(c, pageDate(index)),
+    )),
+  ]);
 }
 
 // ============================================================
@@ -1339,8 +1361,23 @@ class _AllState extends State<AllTab> {
     bool f(Task t) => fil == 'all' ? true : fil == 'normal' ? !isRec(t) : fil == 'rec' ? isRec(t) : t.completed;
     final L = app.tasks.where(f).where((t) => fil == 'done' || !t.completed).toList();
     final act = L.where((t) => !t.completed).toList(), dn = L.where((t) => t.completed).toList();
+    final doneDates = <String, List<Item>>{};
+    for (final t in dn) {
+      (doneDates[t.due] ??= []).add(Item(t, 'live', t.due));
+    }
+    if (fil == 'done') {
+      for (final t in app.tasks.where(isRec)) {
+        for (final d in t.log.toSet()) {
+          (doneDates[d] ??= []).add(Item(t, 'mdone', d));
+        }
+      }
+    }
+    final completedDays = doneDates.keys.toList()..sort((a, b) => b.compareTo(a));
+    for (final entries in doneDates.values) {
+      entries.sort((a, b) => byTime(a.t, b.t));
+    }
     final od = act.where((t) => t.due.compareTo(T) < 0).toList(), up = act.where((t) => t.due.compareTo(T) >= 0).toList();
-    Widget fr(Task t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')), nd: true);
+    Widget fr(Task t) => taskCard(c, t, cls: t.completed ? 'done' : (t.due.compareTo(T) < 0 ? 'over' : (st(t) == 'prog' ? 'prog' : '')));
     String dl(String k) => '${k == T ? 'امروز · ' : ''}${DN[wd(k)]} ${jfmt(k)}${jl(k)[0] != jl(T)[0] ? ' ${jl(k)[0]}' : ''}';
     const ch = [['all', 'همه'], ['normal', 'عادی'], ['rec', 'تکرارشونده / روتین'], ['done', 'انجام‌شده']];
     return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 110), children: [
@@ -1352,11 +1389,14 @@ class _AllState extends State<AllTab> {
         for (final g in grp(od)) ...[dvd(dl(g[0] as String), col: pal.red), ...(g[1] as List<Task>).map(fr)],
       ],
       for (final g in grp(up)) ...[dvd(dl(g[0] as String)), ...(g[1] as List<Task>).map(fr)],
-      if (dn.isNotEmpty) ...[
+      if (completedDays.isNotEmpty) ...[
         dvd('✓ انجام‌شده', big: true),
-        for (final g in grp(dn, desc: true)) ...[dvd(dl(g[0] as String)), ...(g[1] as List<Task>).map(fr)],
+        for (final d in completedDays) ...[
+          dvd(dl(d)),
+          for (final item in doneDates[d]!) item.k == 'mdone' ? mini(item) : fr(item.t),
+        ],
       ],
-      if (L.isEmpty) emptyBox('موردی نیست.'),
+      if (L.isEmpty && completedDays.isEmpty) emptyBox('موردی نیست.'),
     ]);
   }
 }
