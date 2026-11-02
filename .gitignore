@@ -1,0 +1,33 @@
+/AGENTS.md
+/.local-tools/
+/app_build/
+/artifacts/
+
+# Keystores & signing credentials
+keystore/
+*.jks
+*.keystore
+*.p12
+key.properties
+
+# Flutter and Android generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.gradle/
+build/
+coverage/
+local.properties
+*.apk
+*.aab
+
+# Local editor settings, logs, and environment secrets
+.idea/
+.vs/
+*.iml
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db

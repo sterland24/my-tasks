@@ -1,0 +1,150 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KS_ALIAS: ${{ secrets.KEY_ALIAS || 'taskmgr' }}
+      KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.32.x'
+          cache: true
+
+      - name: Decode signing keystore (if secrets available)
+        if: env.KS_PASS != '' && secrets.KEYSTORE_BASE64 != ''
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore/release.jks
+          echo "KS_PATH=$GITHUB_WORKSPACE/keystore/release.jks" >> $GITHUB_ENV
+
+      - name: Create Android project and apply config
+        run: |
+          flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
+          rm -rf app_build/test app_build/lib
+          python3 - <<'PYA'
+          import io, re, os, unicodedata
+          src = 'lib/main.dart'
+          print('source file:', src)
+          s = io.open(src, encoding='utf-8').read()
+          # نیم‌فاصله‌ی درست بین حروف فارسی حفظ شود
+          s = re.sub('(?<=[\u0600-\u06ff])\u200c(?=[\u0600-\u06ff])', '\ue000', s)
+          out, removed = [], []
+          for n, line in enumerate(s.split('\n'), 1):
+              buf = ''
+              for ch in line:
+                  cat = unicodedata.category(ch)
+                  if ch in '\t\r' or ch == '\ue000':
+                      buf += ch
+                  elif cat in ('Cf', 'Cc', 'Zl', 'Zp'):
+                      removed.append((n, hex(ord(ch))))
+                  elif cat == 'Zs' and ch != ' ':
+                      buf += ' '
+                      removed.append((n, hex(ord(ch))))
+                  else:
+                      buf += ch
+              out.append(buf)
+          s = '\n'.join(out).replace('\ue000', '\u200c')
+          print('removed invisible chars (line, code):', removed[:60])
+          os.makedirs('app_build/lib', exist_ok=True)
+          io.open('app_build/lib/main.dart', 'w', encoding='utf-8').write(s)
+          PYA
+          cp pubspec.yaml app_build/pubspec.yaml
+          mkdir -p app_build/assets/fonts
+          for W in Regular Bold; do
+            F=app_build/assets/fonts/Vazirmatn-$W.ttf
+            curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+            || curl -fL --retry 3 -o $F "https://github.com/rastikerdar/vazirmatn/raw/v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+            || curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/fonts/ttf/Vazirmatn-$W.ttf"
+          done
+          python3 - <<'PY'
+          import io, re
+          # ---- AndroidManifest.xml ----
+          p = 'app_build/android/app/src/main/AndroidManifest.xml'
+          m = io.open(p, encoding='utf-8').read()
+          perms = '''    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.VIBRATE"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              '''
+          recv = '''    <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                          <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                          <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                      </intent-filter>
+                  </receiver>
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"/>
+              '''
+          assert '<application' in m and '</application>' in m
+          m = m.replace('<application', perms + '<application', 1)
+          m = m.replace('</application>', recv + '</application>', 1)
+          m = re.sub(r'android:label="[^"]*"', 'android:label="وظایف من"', m, count=1)
+          io.open(p, 'w', encoding='utf-8').write(m)
+          # ---- build.gradle.kts (امضا + desugaring) ----
+          g = 'app_build/android/app/build.gradle.kts'
+          s = io.open(g, encoding='utf-8').read()
+          assert 'compileOptions {' in s and 'signingConfigs.getByName("debug")' in s and 'buildTypes {' in s
+          s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                        'val keyPath = System.getenv("KS_PATH")\n            signingConfig = if (!keyPath.isNullOrBlank() && file(keyPath).exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false', 1)
+          s = s.replace('    buildTypes {', '''    signingConfigs {
+                  create("release") {
+                      val keyPath = System.getenv("KS_PATH")
+                      if (!keyPath.isNullOrBlank() && file(keyPath).exists()) {
+                          storeFile = file(keyPath)
+                          storePassword = System.getenv("KS_PASS")
+                          keyAlias = System.getenv("KS_ALIAS")
+                          keyPassword = System.getenv("KS_PASS")
+                      }
+                  }
+              }
+              buildTypes {''', 1)
+          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"', 1)
+          s += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+          io.open(g, 'w', encoding='utf-8').write(s)
+          PY
+
+      - name: Build release APK
+        working-directory: app_build
+        run: |
+          flutter pub get
+          flutter build apk --release --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+
+      - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: نسخه ${{ github.run_number }}
+          files: app_build/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Clean up sensitive keystore
+        if: always()
+        run: |
+          rm -f keystore/release.jks
