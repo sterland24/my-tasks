@@ -388,7 +388,7 @@ class SetTab extends StatelessWidget {
               Expanded(child: tx('حالت تاریک', w: FontWeight.bold)),
               Switch(
                 value: app.dark,
-                activeThumbColor: pal.acc,
+                activeColor: pal.acc,
                 onChanged: (v) {
                   app.dark = v;
                   app.save(sched: false);
