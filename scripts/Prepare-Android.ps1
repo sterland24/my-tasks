@@ -9,21 +9,25 @@ try {
     $sample = Join-Path $ProjectRoot 'app_build/test/widget_test.dart'
     if (Test-Path $sample) { Remove-Item -LiteralPath $sample }
   }
-  # The root project does not declare flutter_lints from the generated sample.
-  $sampleAnalysis = Join-Path $ProjectRoot 'app_build/analysis_options.yaml'
-  if (Test-Path $sampleAnalysis) { Remove-Item -LiteralPath $sampleAnalysis }
   $propertiesPath = Join-Path $ProjectRoot 'app_build/android/gradle.properties'
   $properties = Get-Content $propertiesPath -Raw
   $properties = [regex]::Replace($properties, '(?m)^org.gradle.jvmargs=.*$', 'org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8')
   if ($properties -notmatch 'org.gradle.workers.max=') { $properties += "`norg.gradle.workers.max=2`nkotlin.daemon.jvmargs=-Xmx1G`n" }
   [IO.File]::WriteAllText($propertiesPath, $properties)
+  if (Test-Path app_build/lib) { Remove-Item app_build/lib -Recurse -Force }
   Copy-Item lib app_build -Recurse -Force
   Copy-Item test app_build -Recurse -Force
   Copy-Item pubspec.yaml app_build/pubspec.yaml -Force
+  if (Test-Path analysis_options.yaml) {
+    Copy-Item analysis_options.yaml app_build/analysis_options.yaml -Force
+  }
   New-Item -ItemType Directory -Force app_build/assets/fonts | Out-Null
   foreach ($weight in @('Regular', 'Bold')) {
+    $localFont = "assets/fonts/Vazirmatn-$weight.ttf"
     $font = "app_build/assets/fonts/Vazirmatn-$weight.ttf"
-    if (!(Test-Path $font)) {
+    if (Test-Path $localFont) {
+      Copy-Item $localFont $font -Force
+    } elseif (!(Test-Path $font)) {
       & curl.exe -fL --retry 3 --silent --show-error -o $font "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-$weight.ttf"
       if ($LASTEXITCODE -ne 0) { throw "Font download failed: $weight" }
     }
@@ -55,6 +59,16 @@ try {
     $manifest = [regex]::Replace($manifest, 'android:label="[^"]*"', 'android:label="وظایف من"')
     [IO.File]::WriteAllText((Join-Path $ProjectRoot $manifestPath), $manifest)
   }
+  $proguardPath = Join-Path $ProjectRoot 'app_build/android/app/proguard-rules.pro'
+  if (!(Test-Path $proguardPath)) {
+    $pgRules = @'
+-keep class com.dexterous.** { *; }
+-keep class com.google.gson.** { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepattributes Signature, InnerClasses, EnclosingMethod
+'@
+    [IO.File]::WriteAllText($proguardPath, $pgRules)
+  }
   $gradlePath = 'app_build/android/app/build.gradle.kts'
   $gradle = Get-Content $gradlePath -Raw
   if ($gradle -notmatch 'isCoreLibraryDesugaringEnabled') {
@@ -75,7 +89,7 @@ try {
     buildTypes {
 '@
     $gradle = $gradle.Replace('    buildTypes {', $signing)
-    $gradle = $gradle.Replace('signingConfig = signingConfigs.getByName("debug")', "val keyPath = System.getenv(`"KS_PATH`")`n            signingConfig = if (!keyPath.isNullOrBlank() && file(keyPath).exists()) signingConfigs.getByName(`"release`") else signingConfigs.getByName(`"debug`")`n            isMinifyEnabled = false`n            isShrinkResources = false")
+    $gradle = $gradle.Replace('signingConfig = signingConfigs.getByName("debug")', "val keyPath = System.getenv(`"KS_PATH`")`n            signingConfig = if (!keyPath.isNullOrBlank() && file(keyPath).exists()) signingConfigs.getByName(`"release`") else signingConfigs.getByName(`"debug`")`n            isMinifyEnabled = true`n            isShrinkResources = true`n            proguardFiles(getDefaultProguardFile(`"proguard-android-optimize.txt`"), `"proguard-rules.pro`")")
     $gradle += "`ndependencies {`n    coreLibraryDesugaring(`"com.android.tools:desugar_jdk_libs:2.1.4`")`n}`n"
     [IO.File]::WriteAllText((Join-Path $ProjectRoot $gradlePath), $gradle)
   }

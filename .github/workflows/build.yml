@@ -42,40 +42,50 @@ jobs:
         run: |
           flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
           rm -rf app_build/test app_build/lib
+          cp -r test app_build/test
+          if [ -f analysis_options.yaml ]; then
+            cp analysis_options.yaml app_build/analysis_options.yaml
+          fi
           python3 - <<'PYA'
           import io, re, os, unicodedata
-          src = 'lib/main.dart'
-          print('source file:', src)
-          s = io.open(src, encoding='utf-8').read()
-          # نیم‌فاصله‌ی درست بین حروف فارسی حفظ شود
-          s = re.sub('(?<=[\u0600-\u06ff])\u200c(?=[\u0600-\u06ff])', '\ue000', s)
-          out, removed = [], []
-          for n, line in enumerate(s.split('\n'), 1):
-              buf = ''
-              for ch in line:
-                  cat = unicodedata.category(ch)
-                  if ch in '\t\r' or ch == '\ue000':
-                      buf += ch
-                  elif cat in ('Cf', 'Cc', 'Zl', 'Zp'):
-                      removed.append((n, hex(ord(ch))))
-                  elif cat == 'Zs' and ch != ' ':
-                      buf += ' '
-                      removed.append((n, hex(ord(ch))))
-                  else:
-                      buf += ch
-              out.append(buf)
-          s = '\n'.join(out).replace('\ue000', '\u200c')
-          print('removed invisible chars (line, code):', removed[:60])
-          os.makedirs('app_build/lib', exist_ok=True)
-          io.open('app_build/lib/main.dart', 'w', encoding='utf-8').write(s)
+          for root, _, files in os.walk('lib'):
+              for fname in files:
+                  if not fname.endswith('.dart'):
+                      continue
+                  src = os.path.join(root, fname)
+                  s = io.open(src, encoding='utf-8').read()
+                  # نیم‌فاصله‌ی درست بین حروف فارسی حفظ شود
+                  s = re.sub('(?<=[\u0600-\u06ff])\u200c(?=[\u0600-\u06ff])', '\ue000', s)
+                  out = []
+                  for line in s.split('\n'):
+                      buf = ''
+                      for ch in line:
+                          cat = unicodedata.category(ch)
+                          if ch in '\t\r' or ch == '\ue000':
+                              buf += ch
+                          elif cat in ('Cf', 'Cc', 'Zl', 'Zp'):
+                              pass
+                          elif cat == 'Zs' and ch != ' ':
+                              buf += ' '
+                          else:
+                              buf += ch
+                      out.append(buf)
+                  s = '\n'.join(out).replace('\ue000', '\u200c')
+                  dst = os.path.join('app_build', src)
+                  os.makedirs(os.path.dirname(dst), exist_ok=True)
+                  io.open(dst, 'w', encoding='utf-8').write(s)
           PYA
           cp pubspec.yaml app_build/pubspec.yaml
           mkdir -p app_build/assets/fonts
           for W in Regular Bold; do
             F=app_build/assets/fonts/Vazirmatn-$W.ttf
-            curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
-            || curl -fL --retry 3 -o $F "https://github.com/rastikerdar/vazirmatn/raw/v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
-            || curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/fonts/ttf/Vazirmatn-$W.ttf"
+            if [ -f "assets/fonts/Vazirmatn-$W.ttf" ]; then
+              cp "assets/fonts/Vazirmatn-$W.ttf" "$F"
+            else
+              curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+              || curl -fL --retry 3 -o $F "https://github.com/rastikerdar/vazirmatn/raw/v33.003/fonts/ttf/Vazirmatn-$W.ttf" \
+              || curl -fL --retry 3 -o $F "https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/fonts/ttf/Vazirmatn-$W.ttf"
+            fi
           done
           python3 - <<'PY'
           import io, re
@@ -105,13 +115,20 @@ jobs:
           m = m.replace('</application>', recv + '</application>', 1)
           m = re.sub(r'android:label="[^"]*"', 'android:label="وظایف من"', m, count=1)
           io.open(p, 'w', encoding='utf-8').write(m)
-          # ---- build.gradle.kts (امضا + desugaring) ----
+          # ---- proguard-rules.pro ----
+          pg = 'app_build/android/app/proguard-rules.pro'
+          io.open(pg, 'w', encoding='utf-8').write('''-keep class com.dexterous.** { *; }
+          -keep class com.google.gson.** { *; }
+          -keep class * extends com.google.gson.reflect.TypeToken
+          -keepattributes Signature, InnerClasses, EnclosingMethod
+          ''')
+          # ---- build.gradle.kts (امضا + desugaring + R8 minify) ----
           g = 'app_build/android/app/build.gradle.kts'
           s = io.open(g, encoding='utf-8').read()
           assert 'compileOptions {' in s and 'signingConfigs.getByName("debug")' in s and 'buildTypes {' in s
           s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
           s = s.replace('signingConfig = signingConfigs.getByName("debug")',
-                        'val keyPath = System.getenv("KS_PATH")\n            signingConfig = if (!keyPath.isNullOrBlank() && file(keyPath).exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")\n            isMinifyEnabled = false\n            isShrinkResources = false', 1)
+                        'val keyPath = System.getenv("KS_PATH")\n            signingConfig = if (!keyPath.isNullOrBlank() && file(keyPath).exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")\n            isMinifyEnabled = true\n            isShrinkResources = true\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")', 1)
           s = s.replace('    buildTypes {', '''    signingConfigs {
                   create("release") {
                       val keyPath = System.getenv("KS_PATH")
@@ -129,10 +146,12 @@ jobs:
           io.open(g, 'w', encoding='utf-8').write(s)
           PY
 
-      - name: Build release APK
+      - name: Analyze, test, and build release APK
         working-directory: app_build
         run: |
           flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test
           flutter build apk --release --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
 
       - uses: actions/upload-artifact@v4

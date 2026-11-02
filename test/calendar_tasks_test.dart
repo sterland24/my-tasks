@@ -21,6 +21,16 @@ void main() {
     app.timers.clear();
   });
 
+  test('Jalali leap year calculation handles 30 Esfand accurately', () {
+    expect(isLeapJ(1403), isTrue);
+    expect(mlen(12, 1403), 30);
+    expect(fromJ(1403, 12, 30), '2025-03-20');
+
+    expect(isLeapJ(1404), isFalse);
+    expect(mlen(12, 1404), 29);
+    expect(fromJ(1404, 12, 30), fromJ(1404, 12, 29));
+  });
+
   testWidgets('calendar follows the finger and snaps to the next RTL day', (tester) async {
     app.tasks.addAll([
       Task(id: 'today', title: 'current day task'),
@@ -92,9 +102,9 @@ void main() {
     expect(app.tasks.single.due, today());
   });
 
-  testWidgets('no-alarm task saves a chosen date and displays it after completion', (tester) async {
+  testWidgets('no-alarm task saves a chosen date and preserves completed status on edit', (tester) async {
     final selected = fromJ(jl(today())[0], 7, 25);
-    app.tasks.add(Task(id: 'silent', title: 'silent task', due: selected));
+    app.tasks.add(Task(id: 'silent', title: 'silent task', due: selected, completed: true));
     await tester.pumpWidget(host(Builder(builder: (context) => TextButton(
       onPressed: () => openTaskForm(context, edit: app.tasks.single),
       child: const Text('edit'),
@@ -114,8 +124,8 @@ void main() {
     final task = app.tasks.single;
     expect(task.due, addD(selected, 1));
     expect(task.alarm.type, 'none');
+    expect(task.completed, isTrue);
     expect(tmOf(task), isEmpty);
-    completeTask(task);
     await tester.pumpWidget(host(const AllTab()));
     await tester.tap(find.text('انجام‌شده'));
     await tester.pumpAndSettle();
