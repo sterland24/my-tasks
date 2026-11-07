@@ -112,7 +112,7 @@ class _CalState extends State<CalTab> {
     );
   }
 
-  Widget weekDay(String x) {
+  Widget weekDay(BuildContext c, String x) {
     final it = itemsOn(x);
     final reminders = app.remindersOn(x);
     void go() => showWeek(false, selected: x);
@@ -217,7 +217,7 @@ class _CalState extends State<CalTab> {
           ib(glyph('›'), () => step(1)),
         ]),
         const SizedBox(height: 4),
-        if (week) ...[for (int i = 0; i < 7; i++) weekDay(addD(ws, i))] else dayBody(c, d),
+        if (week) ...[for (int i = 0; i < 7; i++) weekDay(c, addD(ws, i))] else dayBody(c, d),
       ],
     );
   }
