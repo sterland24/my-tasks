@@ -15,49 +15,9 @@
 
 ---
 
-## ساخت و توسعه روی ویندوز
-
-ابزارهای محلی مورد نیاز در صورت استفاده از ساختار اسکریپتی در `.local-tools/` قرار می‌گیرند:
-- Flutter 3.32.x
-- Java 17
-- Android SDK (Build Tools 34/35 و NDK 27.0.12077973)
-
-اسکریپت‌ها را در PowerShell از ریشهٔ پروژه اجرا کنید. سورس‌کد اصلی در `lib/main.dart` و تست‌ها در `test/` قرار دارند:
-
-```powershell
-# فعال کردن ابزارها در نشست جاری
-. ./scripts/env.ps1
-
-# آماده‌سازی پروژه اندروید و دریافت وابستگی‌ها
-./scripts/Prepare-Android.ps1
-
-# بررسی کد و اجرای تست‌های موجود
-./scripts/Test-App.ps1
-
-# ساخت APK آزمایشی (بدون نیاز به کلید انتشار)
-./scripts/Build-Apk.ps1 -DebugApk
-
-# اجرای برنامه روی شبیه‌ساز یا دستگاه متصل
-./scripts/Start-Emulator.ps1
-./scripts/Run-Android.ps1
-```
-
-خروجی APK در پوشه `artifacts/` کپی می‌شود.
-
----
-
-## فرآیند امضا و انتشار (Signing & CI/CD)
+## فرآیند انتشار (CI/CD)
 
 کلید انتشار (`keystore/release.jks`) به دلایل امنیتی درون مخزن گیت قرار **نمی‌گیرد** و در `.gitignore` نادیده گرفته شده است.
-
-### بیلد انتشار محلی
-برای بیلد انتشار رسمی، فایل کلید خود را در `keystore/release.jks` قرار دهید و متغیرهای زیر را تنظیم نمایید:
-```powershell
-$secret = Read-Host 'Release keystore password' -AsSecureString
-$env:KS_PASS = [Net.NetworkCredential]::new('', $secret).Password
-try { ./scripts/Build-Apk.ps1 } finally { Remove-Item Env:KS_PASS }
-```
-در صورتی که کلید انتشار در سیستم موجود نباشد، با استفاده از سویچ `-DebugApk` می‌توانید نسخه آزمایشی را بسازید.
 
 ### استقرار خودکار در GitHub Actions
 گردش کار CI در `.github/workflows/build.yml` برای امضا و انتشار خودکار APK در بخش Releases از **GitHub Secrets** استفاده می‌کند:

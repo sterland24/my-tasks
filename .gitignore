@@ -1,8 +1,4 @@
 /AGENTS.md
-/.local-tools/
-/app_build/
-/artifacts/
-
 # Keystores & signing credentials
 keystore/
 *.jks

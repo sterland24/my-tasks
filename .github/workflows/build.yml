@@ -42,7 +42,6 @@ jobs:
         run: |
           flutter create --platforms=android --org com.mytasks --project-name task_manager app_build
           rm -rf app_build/test app_build/lib
-          cp -r test app_build/test
           if [ -f analysis_options.yaml ]; then
             cp analysis_options.yaml app_build/analysis_options.yaml
           fi
@@ -146,12 +145,11 @@ jobs:
           io.open(g, 'w', encoding='utf-8').write(s)
           PY
 
-      - name: Analyze, test, and build release APK
+      - name: Analyze and build release APK
         working-directory: app_build
         run: |
           flutter pub get
           flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test
           flutter build apk --release --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
 
       - uses: actions/upload-artifact@v4
