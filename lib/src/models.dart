@@ -41,6 +41,7 @@ class Task {
   Alarm alarm;
   bool completed;
   List<String> log;
+  List<String> skipped;
   String? tpl;
   Task({
     required this.id,
@@ -52,12 +53,14 @@ class Task {
     this.completed = false,
     String? created,
     List<String>? log,
+    List<String>? skipped,
     this.tpl,
   })  : subs = subs ?? [],
         alarm = alarm ?? Alarm(),
         due = due ?? today(),
         created = created ?? today(),
-        log = log ?? [];
+        log = log ?? [],
+        skipped = skipped ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -70,6 +73,7 @@ class Task {
         'subs': subs.map((s) => s.toJson()).toList(),
         'alarm': alarm.toJson(),
         'log': log,
+        'skipped': skipped,
       };
 
   factory Task.fromJson(Map<String, dynamic> j) => Task(
@@ -83,9 +87,43 @@ class Task {
         subs: ((j['subs'] ?? []) as List).map((e) => Sub.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         alarm: Alarm.fromJson(Map<String, dynamic>.from((j['alarm'] ?? {}) as Map)),
         log: ((j['log'] ?? []) as List).map((e) => e.toString()).toList(),
+        skipped: ((j['skipped'] ?? []) as List).map((e) => e.toString()).toList(),
       );
 
   Task clone() => Task.fromJson(Map<String, dynamic>.from(jsonDecode(jsonEncode(toJson())) as Map));
+}
+
+class Reminder {
+  String id, title, note, date, time;
+  List<int> offsets;
+  Reminder({
+    required this.id,
+    required this.title,
+    this.note = '',
+    required this.date,
+    this.time = '09:00',
+    List<int>? offsets,
+  }) : offsets = offsets ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'note': note,
+        'date': date,
+        'time': time,
+        'offsets': offsets,
+      };
+
+  factory Reminder.fromJson(Map<String, dynamic> j) => Reminder(
+        id: j['id'] as String,
+        title: j['title'] as String,
+        note: (j['note'] ?? '') as String,
+        date: j['date'] as String,
+        time: (j['time'] ?? '09:00') as String,
+        offsets: ((j['offsets'] ?? []) as List).map((e) => (e as num).toInt()).toList(),
+      );
+
+  Reminder clone() => Reminder.fromJson(Map<String, dynamic>.from(jsonDecode(jsonEncode(toJson())) as Map));
 }
 
 class Tpl {

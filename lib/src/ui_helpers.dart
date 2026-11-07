@@ -335,6 +335,10 @@ Widget taskCard(BuildContext c, Task t, {String cls = ''}) {
               ),
             const SizedBox(height: 8),
             Row(children: [
+              if (isRec(t)) ...[
+                btn('↷ رد کردن این نوبت', () => app.skipOcc(t, t.due), fg: pal.amb),
+                const SizedBox(width: 8),
+              ],
               btn('✎ ویرایش', () => openTaskForm(c, edit: t)),
               const SizedBox(width: 8),
               btn('حذف', () async {
@@ -372,6 +376,42 @@ Widget mini(Item x) {
           ]),
         ]),
       ),
+      if (pl && isRec(t))
+        btn('رد کردن', () => app.skipOcc(t, x.d), fg: pal.amb, p: const EdgeInsets.symmetric(horizontal: 9, vertical: 6)),
     ]),
   );
 }
+
+String offsetLabel(int minutes) {
+  if (minutes >= 60 && minutes % 60 == 0) return '${minutes ~/ 60} ساعت';
+  if (minutes > 60) return '${minutes ~/ 60} ساعت و ${minutes % 60} دقیقه';
+  return '$minutes دقیقه';
+}
+
+Widget reminderCard(BuildContext c, Reminder r) => cardBox(
+      stripe: pal.amb,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          chk(false, () => app.completeReminder(r.id)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              tx(r.title, w: FontWeight.bold),
+              tx('${jfmt(r.date)} · ${r.time}', size: 12, color: pal.amb),
+            ]),
+          ),
+          ib(Icon(Icons.edit, size: 17, color: pal.mut), () => openReminderForm(c, edit: r), s: 34),
+          const SizedBox(width: 6),
+          ib(Icon(Icons.delete_outline, size: 18, color: pal.red), () async {
+            if (await confirm(c, 'حذف یادآوری؟', r.title)) app.deleteReminder(r.id);
+          }, s: 34),
+        ]),
+        if (r.note.isNotEmpty)
+          Padding(padding: const EdgeInsetsDirectional.only(start: 38, top: 6), child: tx(r.note, size: 13, color: pal.mut)),
+        if (r.offsets.isNotEmpty)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 38, top: 4),
+            child: tx('پیش‌یادآوری: ${r.offsets.map(offsetLabel).join('، ')} قبل', size: 11, color: pal.mut),
+          ),
+      ]),
+    );

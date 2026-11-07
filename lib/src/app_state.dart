@@ -25,6 +25,7 @@ final GlobalKey<ScaffoldMessengerState> msgKey = GlobalKey<ScaffoldMessengerStat
 
 class AppState extends ChangeNotifier {
   List<Task> tasks = [];
+  List<Reminder> reminders = [];
   List<Tpl> tpls = [];
   bool dark = true;
   Map<String, int> timers = {};
@@ -38,7 +39,7 @@ class AppState extends ChangeNotifier {
   String _cacheKey = '';
 
   String _computeTasksKey() =>
-      '${today()}|${tasks.length}|${tasks.fold<int>(0, (h, t) => h ^ t.id.hashCode ^ t.due.hashCode ^ t.completed.hashCode ^ t.alarm.type.hashCode ^ t.log.length)}';
+      '${today()}|${tasks.length}|${tasks.fold<int>(0, (h, t) => h ^ t.id.hashCode ^ t.due.hashCode ^ t.completed.hashCode ^ t.alarm.type.hashCode ^ t.log.length ^ t.skipped.length)}';
 
   List<Item> cachedItemsOn(String d) {
     final ck = _computeTasksKey();
@@ -69,7 +70,10 @@ class AppState extends ChangeNotifier {
     final sb = StringBuffer();
     for (final t in tasks) {
       if (t.completed || t.alarm.type == 'none') continue;
-      sb.write('${t.id}:${t.title}:${t.due}:${t.alarm.type}:${t.alarm.time}:${t.alarm.date}:${t.alarm.days.join(",")}:${t.alarm.doms.join(",")}:${t.log.length};');
+      sb.write('${t.id}:${t.title}:${t.due}:${t.alarm.type}:${t.alarm.time}:${t.alarm.date}:${t.alarm.days.join(",")}:${t.alarm.doms.join(",")}:${t.log.length}:${t.skipped.join(",")};');
+    }
+    for (final r in reminders) {
+      sb.write('rem:${r.id}:${r.title}:${r.note}:${r.date}:${r.time}:${r.offsets.join(",")};');
     }
     for (final e in timers.entries) {
       sb.write('tm:${e.key}:${e.value};');
@@ -78,10 +82,11 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, dynamic> toJson() => {
-        'v': 1,
+        'v': 2,
         'dark': dark,
         'timers': timers,
         'tasks': tasks.map((t) => t.toJson()).toList(),
+        'reminders': reminders.map((r) => r.toJson()).toList(),
         'tpls': tpls.map((t) => t.toJson()).toList(),
       };
 
@@ -90,6 +95,7 @@ class AppState extends ChangeNotifier {
     final m = Map<String, dynamic>.from(j);
     if (m['tasks'] is! List || m['tpls'] is! List) throw 'bad backup';
     tasks = (m['tasks'] as List).map((e) => Task.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    reminders = ((m['reminders'] ?? []) as List).map((e) => Reminder.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     tpls = (m['tpls'] as List).map((e) => Tpl.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     dark = m['dark'] != false;
     timers = ((m['timers'] ?? {}) as Map).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
@@ -98,6 +104,7 @@ class AppState extends ChangeNotifier {
 
   void seed() {
     tasks = [];
+    reminders = [];
     timers = {};
     tpls = [
       Tpl('tp1', 'ویدیو کلاس', ['آماده شدن فایل', 'کاهش حجم ویدیو', 'آپلود فایل', 'ساخت و ارسال لینک']),
@@ -194,12 +201,46 @@ class AppState extends ChangeNotifier {
     save(sched: true);
   }
 
+  void skipOcc(Task t, String d) {
+    if (!isRec(t) || t.skipped.contains(d) || t.log.contains(d)) return;
+    t.skipped.add(d);
+    if (t.due == d) t.due = nextOpen(t, mx(addD(d, 1), today()));
+    toast('این نوبت رد شد؛ نوبت‌های بعدی باقی می‌مانند');
+    save(sched: true);
+  }
+
   void deleteTask(String id) {
     tasks.removeWhere((t) => t.id == id);
     timers.remove(id);
     toast('حذف شد');
     save(sched: true);
   }
+
+  void putReminder(Reminder reminder) {
+    final i = reminders.indexWhere((r) => r.id == reminder.id);
+    if (i < 0) {
+      reminders.insert(0, reminder);
+    } else {
+      reminders[i] = reminder;
+    }
+    save(sched: true);
+  }
+
+  void completeReminder(String id) {
+    reminders.removeWhere((r) => r.id == id);
+    timers.remove(id);
+    toast('یادآوری انجام و پاک شد ✓');
+    save(sched: true);
+  }
+
+  void deleteReminder(String id) {
+    reminders.removeWhere((r) => r.id == id);
+    timers.remove(id);
+    save(sched: true);
+  }
+
+  List<Reminder> remindersOn(String date) => reminders.where((r) => r.date == date).toList()
+    ..sort((a, b) => a.time.compareTo(b.time));
 
   void startTimer(String id, int minutes) {
     timers[id] = DateTime.now().millisecondsSinceEpoch + minutes * 60000;
@@ -243,9 +284,16 @@ class AppState extends ChangeNotifier {
     if (payload == null || action == null || action.isEmpty) return;
     final p = payload.split('|');
     if (p.length < 2) return;
-    final id = p[1];
+    final kind = p[0], id = p[1];
     final i = tasks.indexWhere((t) => t.id == id);
-    if (action == 'done' && i >= 0) {
+    final reminderExists = reminders.any((r) => r.id == id);
+    if (action == 'done' && kind == 'reminder' && reminderExists) {
+      reminders.removeWhere((r) => r.id == id);
+      timers.remove(id);
+    } else if (action == 'done' && kind == 'timer' && reminderExists) {
+      reminders.removeWhere((r) => r.id == id);
+      timers.remove(id);
+    } else if (action == 'done' && i >= 0) {
       final t = tasks[i];
       if (!t.completed) {
         for (final s in t.subs) {
@@ -254,7 +302,7 @@ class AppState extends ChangeNotifier {
         completeTask(t);
       }
       timers.remove(id);
-    } else if (action == 'snooze') {
+    } else if (action == 'snooze' && (i >= 0 || reminderExists)) {
       timers[id] = DateTime.now().millisecondsSinceEpoch + 10 * 60000;
     }
     save(sched: true);
@@ -264,8 +312,8 @@ class AppState extends ChangeNotifier {
   NotificationDetails _details() => NotificationDetails(
         android: AndroidNotificationDetails(
           'tasks',
-          'یادآور تسک‌ها',
-          channelDescription: 'یادآوری تسک‌ها و تایمرها',
+          'یادآوری‌ها',
+          channelDescription: 'یادآوری‌های تسک و اعلان‌های شخصی',
           importance: Importance.max,
           priority: Priority.high,
           category: AndroidNotificationCategory.reminder,
@@ -311,11 +359,33 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+    for (final r in reminders) {
+      final due = atTime(r.date, r.time);
+      for (final offset in r.offsets.toSet()) {
+        final early = due.subtract(Duration(minutes: offset));
+        if (early.isAfter(now)) {
+          await _sched(
+            nid('reminder|${r.id}|$offset'),
+            r.title,
+            'پیش‌یادآوری · موعد ${jfmt(r.date)} ساعت ${r.time}',
+            'reminder|${r.id}',
+            early,
+          );
+          if (++count > 400) return;
+        }
+      }
+      if (due.isAfter(now)) {
+        await _sched(nid('reminder|${r.id}|main'), r.title, r.note.isEmpty ? 'زمان یادآوری رسید ⏰' : r.note, 'reminder|${r.id}', due);
+        if (++count > 400) return;
+      }
+    }
     for (final e in timers.entries) {
       final dt = DateTime.fromMillisecondsSinceEpoch(e.value);
       if (dt.isAfter(now)) {
         final i = tasks.indexWhere((t) => t.id == e.key);
-        await _sched(nid('timer|${e.key}'), i >= 0 ? tasks[i].title : 'تایمر', 'وقتشه برگردی سراغ این کار ⏳', 'timer|${e.key}', dt);
+        final ri = reminders.indexWhere((r) => r.id == e.key);
+        final reminder = ri >= 0 ? reminders[ri] : null;
+        await _sched(nid('timer|${e.key}'), i >= 0 ? tasks[i].title : reminder?.title ?? 'تایمر', 'وقتشه برگردی سراغ این کار ⏳', 'timer|${e.key}', dt);
       }
     }
   }

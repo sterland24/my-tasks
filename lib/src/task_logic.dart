@@ -50,7 +50,7 @@ String nextOcc(Alarm a, String start) {
 String nextOpen(Task t, String start) {
   String d = nextOcc(t.alarm, start);
   int i = 0;
-  while (t.log.contains(d) && i++ < 400) {
+  while ((t.log.contains(d) || t.skipped.contains(d)) && i++ < 400) {
     d = nextOcc(t.alarm, addD(d, 1));
   }
   return d;
@@ -58,7 +58,7 @@ String nextOpen(Task t, String start) {
 
 bool occurs(Task t, String d) {
   final a = t.alarm;
-  if (d.compareTo(t.created) < 0) return false;
+  if (d.compareTo(t.created) < 0 || t.skipped.contains(d)) return false;
   if (a.type == 'daily') return true;
   if (a.type == 'weekly') return a.days.contains(wd(d));
   if (a.type == 'monthly') {

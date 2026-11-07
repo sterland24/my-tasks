@@ -86,7 +86,7 @@ class _CalState extends State<CalTab> {
             child: Column(children: [
               FittedBox(fit: BoxFit.scaleDown, child: tx(DN[wd(x)], size: 10, color: on ? Colors.white : pal.mut)),
               tx('${jl(x)[2]}', size: 16, w: FontWeight.bold, color: fg ?? (x == T ? pal.acc : pal.tx)),
-              Text(itemsOn(x).isNotEmpty ? '●' : ' ', style: TextStyle(fontSize: 8, color: on ? Colors.white : pal.acc)),
+              Text(itemsOn(x).isNotEmpty || app.remindersOn(x).isNotEmpty ? '●' : ' ', style: TextStyle(fontSize: 8, color: on ? Colors.white : pal.acc)),
             ]),
           ),
         ),
@@ -114,6 +114,7 @@ class _CalState extends State<CalTab> {
 
   Widget weekDay(String x) {
     final it = itemsOn(x);
+    final reminders = app.remindersOn(x);
     void go() => showWeek(false, selected: x);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -132,12 +133,16 @@ class _CalState extends State<CalTab> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 tx('${DN[wd(x)]} ${jfmt(x)}', size: 14),
-                tx(it.isEmpty ? '—' : '${it.length} تسک', size: 12, color: pal.mut),
+                tx(it.isEmpty && reminders.isEmpty ? '—' : '${it.length} تسک · ${reminders.length} یادآوری', size: 12, color: pal.mut),
               ],
             ),
           ),
         ),
         Container(height: 1, color: pal.bd),
+        if (reminders.isNotEmpty) ...[
+          secH('یادآوری‌ها', pal.amb, reminders.length),
+          for (final r in reminders) reminderCard(c, r),
+        ],
         for (final w in it) weekRow(w, x, go),
       ]),
     );
@@ -145,9 +150,14 @@ class _CalState extends State<CalTab> {
 
   Widget dayBody(BuildContext c, String d) {
     final T = today(), it = itemsOn(d);
+    final reminders = app.remindersOn(d);
     final lv = [for (final x in it) if (x.k == 'live') x.t];
     final mn = [for (final x in it) if (x.k != 'live') x];
     final out = <Widget>[];
+    if (reminders.isNotEmpty) {
+      out.add(secH('یادآوری‌ها', pal.amb, reminders.length));
+      out.addAll(reminders.map((r) => reminderCard(c, r)));
+    }
     if (d == T) {
       final ov = app.tasks.where((t) => !t.completed && t.due.compareTo(T) < 0).toList()
         ..sort((a, b) => a.due != b.due ? a.due.compareTo(b.due) : byTime(a, b));
@@ -176,7 +186,7 @@ class _CalState extends State<CalTab> {
       );
       out.addAll(mn.map(mini));
     }
-    return out.isEmpty ? emptyBox('📭\nبرای این روز تسکی نیست.') : Column(children: out);
+    return out.isEmpty ? emptyBox('📭\nبرای این روز موردی نیست.') : Column(children: out);
   }
 
   Widget calendarPage(BuildContext c, String d) {
@@ -304,6 +314,17 @@ class _AllState extends State<AllTab> {
       (_) => const SizedBox(height: 10),
       (_) => Wrap(spacing: 8, runSpacing: 8, children: [for (final x in ch) chip(x[1], fil == x[0], () => setState(() => fil = x[0]))]),
     ];
+
+    if (fil == 'all' && app.reminders.isNotEmpty) {
+      final reminders = [...app.reminders]..sort((a, b) {
+          final dateOrder = a.date.compareTo(b.date);
+          return dateOrder != 0 ? dateOrder : a.time.compareTo(b.time);
+        });
+      rows.add((_) => dvd('🔔 یادآوری‌ها', col: pal.amb, big: true));
+      for (final r in reminders) {
+        rows.add((ctx) => reminderCard(ctx, r));
+      }
+    }
 
     if (od.isNotEmpty) {
       rows.add((_) => dvd('⚠️ از موعد گذشته', col: pal.red, big: true));
