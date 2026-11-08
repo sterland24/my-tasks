@@ -29,6 +29,7 @@ class AppState extends ChangeNotifier {
   List<Tpl> tpls = [];
   bool dark = true;
   String themeId = 'classic';
+  String selectedDate = today();
   Map<String, int> timers = {};
   final Set<String> ex = {};
   final ValueNotifier<int> timerTick = ValueNotifier<int>(0);
@@ -36,11 +37,18 @@ class AppState extends ChangeNotifier {
   Future<void> _q = Future.value();
   String _lastSchedSig = '';
   int _lastMin = -1;
+  int _rev = 0;
   final Map<String, List<Item>> _itemsCache = {};
   String _cacheKey = '';
 
+  void _clearCache() {
+    _rev++;
+    _itemsCache.clear();
+    _cacheKey = '';
+  }
+
   String _computeTasksKey() =>
-      '${today()}|${tasks.length}|${tasks.fold<int>(0, (h, t) => h ^ t.id.hashCode ^ t.due.hashCode ^ t.completed.hashCode ^ t.alarm.type.hashCode ^ t.log.length ^ t.skipped.length)}';
+      '$_rev|${today()}|${tasks.length}|${Object.hashAll(tasks.map((t) => Object.hash(t.id, t.title, t.note, t.due, t.completed, t.alarm.type, t.alarm.time, t.alarm.date, Object.hashAll(t.alarm.days), Object.hashAll(t.alarm.doms), Object.hashAll(t.log), Object.hashAll(t.skipped), t.subs.length, Object.hashAll(t.subs.map((s) => s.done)))))}';
 
   List<Item> cachedItemsOn(String d) {
     final ck = _computeTasksKey();
@@ -103,7 +111,7 @@ class AppState extends ChangeNotifier {
     final savedTheme = m['theme'];
     themeId = savedTheme is String && const {'classic', 'glass', 'ocean', 'warm'}.contains(savedTheme) ? savedTheme : 'classic';
     timers = ((m['timers'] ?? {}) as Map).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
-    _itemsCache.clear();
+    _clearCache();
   }
 
   void seed() {
@@ -111,7 +119,7 @@ class AppState extends ChangeNotifier {
     reminders = [];
     timers = {};
     tpls = [];
-    _itemsCache.clear();
+    _clearCache();
   }
 
   Future<File> _file() async => File('${(await getApplicationDocumentsDirectory()).path}/taskmanager.json');
@@ -133,11 +141,12 @@ class AppState extends ChangeNotifier {
         }
       } else {
         seed();
-        _q = _q.then((_) => _persist(sched: false));
+        _q = _q.catchError((_) {}).then((_) => _persist(sched: false));
       }
     } catch (_) {
       if (tasks.isEmpty && tpls.isEmpty) seed();
     }
+    _clearCache();
     notifyListeners();
   }
 
@@ -158,9 +167,9 @@ class AppState extends ChangeNotifier {
   }
 
   void save({bool sched = true}) {
-    _itemsCache.clear();
+    _clearCache();
     notifyListeners();
-    _q = _q.then((_) => _persist(sched: sched));
+    _q = _q.catchError((_) {}).then((_) => _persist(sched: sched));
   }
 
   // ----- اکشن‌ها -----

@@ -167,36 +167,44 @@ Widget chip(String l, bool on, VoidCallback f) => tap(
       ),
     );
 
-Widget cardBox({required Widget child, Color? stripe, Color? bg, double op = 1}) => Opacity(
-      opacity: op,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(pal.radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: pal.glass ? 14 : 0, sigmaY: pal.glass ? 14 : 0),
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: bg ?? pal.card,
-              borderRadius: BorderRadius.circular(pal.radius),
-              border: pal.glass ? Border.all(color: pal.bd, width: 1) : null,
-              boxShadow: app.themeId == 'classic'
-                  ? const []
-                  : [BoxShadow(color: Colors.black.withValues(alpha: app.dark ? .12 : .045), blurRadius: 16, offset: const Offset(0, 5))],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: BorderDirectional(start: BorderSide(color: stripe ?? pal.bd, width: 4)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
-                child: child,
-              ),
-            ),
-          ),
-        ),
+Widget cardBox({required Widget child, Color? stripe, Color? bg, double op = 1}) {
+  Widget box = Container(
+    decoration: BoxDecoration(
+      color: bg ?? pal.card,
+      borderRadius: BorderRadius.circular(pal.radius),
+      border: pal.glass ? Border.all(color: pal.bd, width: 1) : null,
+      boxShadow: app.themeId == 'classic'
+          ? const []
+          : [BoxShadow(color: Colors.black.withValues(alpha: app.dark ? .12 : .045), blurRadius: 16, offset: const Offset(0, 5))],
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        border: BorderDirectional(start: BorderSide(color: stripe ?? pal.bd, width: 4)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
+        child: child,
+      ),
+    ),
+  );
+  if (pal.glass) {
+    box = ClipRRect(
+      borderRadius: BorderRadius.circular(pal.radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: box,
       ),
     );
+  }
+  if (op < 1) {
+    box = Opacity(opacity: op, child: box);
+  }
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: box,
+  );
+}
 
 Widget secH(String ti, Color col, int n) => Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 8),

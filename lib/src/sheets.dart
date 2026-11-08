@@ -10,18 +10,19 @@ import 'ui_helpers.dart';
 // ============================================================
 // فرم‌های تسک، تایمر و قالب (با مدیریت چرخه حیات کنترلرها)
 // ============================================================
-void openTaskForm(BuildContext ctx, {Task? edit}) {
-  sheet<void>(ctx, (_) => _TaskFormSheet(edit: edit));
+void openTaskForm(BuildContext ctx, {Task? edit, String? initialDate}) {
+  sheet<void>(ctx, (_) => _TaskFormSheet(edit: edit, initialDate: initialDate));
 }
 
-void openReminderForm(BuildContext ctx, {Reminder? edit}) {
-  sheet<void>(ctx, (_) => _TaskFormSheet(reminderEdit: edit));
+void openReminderForm(BuildContext ctx, {Reminder? edit, String? initialDate}) {
+  sheet<void>(ctx, (_) => _TaskFormSheet(reminderEdit: edit, initialDate: initialDate));
 }
 
 class _TaskFormSheet extends StatefulWidget {
   final Task? edit;
   final Reminder? reminderEdit;
-  const _TaskFormSheet({this.edit, this.reminderEdit});
+  final String? initialDate;
+  const _TaskFormSheet({this.edit, this.reminderEdit, this.initialDate});
   @override
   State<_TaskFormSheet> createState() => _TaskFormSheetState();
 }
@@ -38,7 +39,7 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
     super.initState();
     _kind = widget.reminderEdit == null ? 'task' : 'reminder';
     final e = widget.edit;
-    t = e != null ? e.clone() : Task(id: uid(), title: '');
+    t = e != null ? e.clone() : Task(id: uid(), title: '', due: widget.initialDate);
     if (t.alarm.type == 'none' || t.alarm.type == 'once') {
       t.alarm.date = t.due;
     }
@@ -360,7 +361,7 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
       if (widget.edit != null)
         ...taskFields
       else if (widget.reminderEdit != null)
-        _ReminderForm(edit: widget.reminderEdit)
+        _ReminderForm(edit: widget.reminderEdit, initialDate: widget.initialDate)
       else ...[
         Visibility(
           visible: _kind == 'task',
@@ -372,7 +373,7 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
           visible: _kind == 'reminder',
           maintainState: true,
           maintainAnimation: true,
-          child: const _ReminderForm(),
+          child: _ReminderForm(initialDate: widget.initialDate),
         ),
       ],
       ]),
@@ -382,7 +383,8 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
 
 class _ReminderForm extends StatefulWidget {
   final Reminder? edit;
-  const _ReminderForm({this.edit});
+  final String? initialDate;
+  const _ReminderForm({this.edit, this.initialDate});
   @override
   State<_ReminderForm> createState() => _ReminderFormState();
 }
@@ -395,7 +397,7 @@ class _ReminderFormState extends State<_ReminderForm> {
   @override
   void initState() {
     super.initState();
-    r = widget.edit?.clone() ?? Reminder(id: uid(), title: '', date: today());
+    r = widget.edit?.clone() ?? Reminder(id: uid(), title: '', date: widget.initialDate ?? today());
     tc = TextEditingController(text: r.title);
     nc = TextEditingController(text: r.note);
     customC = TextEditingController();
