@@ -87,6 +87,25 @@ BoxDecoration get appBackground => BoxDecoration(
       gradient: pal.gradient ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [pal.bg, pal.glow, pal.bg]) : null,
     );
 
+/// ویجت متنی با ارقام فارسی خودکار
+Widget appText(
+  String text, {
+  double size = 15,
+  Color? color,
+  FontWeight? w,
+  TextAlign? align,
+  int? maxLines,
+  TextDecoration? deco,
+  TextDirection? dir,
+}) =>
+    Text(
+      fa(text),
+      textAlign: align,
+      maxLines: maxLines,
+      textDirection: dir,
+      overflow: maxLines != null ? TextOverflow.ellipsis : null,
+      style: TextStyle(fontSize: size, color: color ?? pal.tx, fontWeight: w, decoration: deco, height: 1.5),
+    );
 Widget tx(
   String s, {
   double size = 15,
@@ -97,18 +116,12 @@ Widget tx(
   TextDecoration? deco,
   TextDirection? dir,
 }) =>
-    Text(
-      fa(s),
-      textAlign: align,
-      maxLines: maxLines,
-      textDirection: dir,
-      overflow: maxLines != null ? TextOverflow.ellipsis : null,
-      style: TextStyle(fontSize: size, color: color ?? pal.tx, fontWeight: w, decoration: deco, height: 1.5),
-    );
+    appText(s, size: size, color: color, w: w, align: align, maxLines: maxLines, deco: deco, dir: dir);
 
-Widget tap(VoidCallback f, Widget c) => GestureDetector(behavior: HitTestBehavior.opaque, onTap: f, child: c);
+Widget appTap(VoidCallback f, Widget c) => GestureDetector(behavior: HitTestBehavior.opaque, onTap: f, child: c);
+Widget tap(VoidCallback f, Widget c) => appTap(f, c);
 
-Widget ib(Widget child, VoidCallback f, {double s = 36}) => tap(
+Widget appIconButton(Widget child, VoidCallback f, {double s = 36}) => tap(
       f,
       Container(
         width: s,
@@ -118,10 +131,11 @@ Widget ib(Widget child, VoidCallback f, {double s = 36}) => tap(
         child: child,
       ),
     );
+Widget ib(Widget child, VoidCallback f, {double s = 36}) => appIconButton(child, f, s: s);
 
 Widget glyph(String g) => Text(g, style: TextStyle(fontSize: 22, color: pal.tx, height: 1.1));
 
-Widget chk(bool on, VoidCallback f, {double s = 26}) => tap(
+Widget appCheckbox(bool on, VoidCallback f, {double s = 26}) => tap(
       f,
       Container(
         width: s,
@@ -135,9 +149,10 @@ Widget chk(bool on, VoidCallback f, {double s = 26}) => tap(
         child: on ? Icon(Icons.check, size: s - 10, color: Colors.white) : null,
       ),
     );
+Widget chk(bool on, VoidCallback f, {double s = 26}) => appCheckbox(on, f, s: s);
 
-Widget btn(
-  String l,
+Widget appButton(
+  String label,
   VoidCallback f, {
   Color? bg,
   Color? fg,
@@ -149,14 +164,23 @@ Widget btn(
       Container(
         width: wide ? double.infinity : null,
         padding: wide ? const EdgeInsets.symmetric(vertical: 13) : p,
-          decoration: BoxDecoration(
-            color: bg ?? pal.card2,
-            borderRadius: BorderRadius.circular(wide ? (app.themeId == 'classic' ? 14 : pal.radius * .8) : (app.themeId == 'classic' ? 10 : pal.radius * .6)),
-          ),
+        decoration: BoxDecoration(
+          color: bg ?? pal.card2,
+          borderRadius: BorderRadius.circular(wide ? (app.themeId == 'classic' ? 14 : pal.radius * .8) : (app.themeId == 'classic' ? 10 : pal.radius * .6)),
+        ),
         alignment: wide ? Alignment.center : null,
-        child: tx(l, size: wide ? 15 : 13, color: fg, w: wide ? FontWeight.bold : null),
+        child: tx(label, size: wide ? 15 : 13, color: fg, w: wide ? FontWeight.bold : null),
       ),
     );
+Widget btn(
+  String l,
+  VoidCallback f, {
+  Color? bg,
+  Color? fg,
+  bool wide = false,
+  EdgeInsets p = const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+}) =>
+    appButton(l, f, bg: bg, fg: fg, wide: wide, p: p);
 
 Widget chip(String l, bool on, VoidCallback f) => tap(
       f,
