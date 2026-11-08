@@ -398,6 +398,47 @@ class TplTab extends StatelessWidget {
 
 class SetTab extends StatelessWidget {
   const SetTab({super.key});
+
+  Widget _themeTile(String id, String title, String detail, Color accent, Color surface) {
+    final selected = app.themeId == id;
+    return tap(
+      () => app.setTheme(id),
+      Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: selected ? pal.card2 : pal.card,
+          borderRadius: BorderRadius.circular(pal.radius),
+          border: Border.all(color: selected ? accent : pal.bd, width: selected ? 2 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(10)),
+              child: Icon(selected ? Icons.check : Icons.palette_outlined, size: 17, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: tx(title, size: 13, w: FontWeight.bold)),
+          ]),
+          const Spacer(),
+          tx(detail, size: 10, color: pal.mut, maxLines: 1),
+          const SizedBox(height: 7),
+          Row(children: [
+            for (final color in [surface, accent, pal.bd])
+              Expanded(
+                child: Container(
+                  height: 8,
+                  margin: const EdgeInsetsDirectional.only(end: 4),
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext c) => ListView(
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 110),
@@ -406,14 +447,37 @@ class SetTab extends StatelessWidget {
           const SizedBox(height: 14),
           cardBox(
             child: Row(children: [
-              Expanded(child: tx('حالت تاریک', w: FontWeight.bold)),
+              Expanded(child: tx(app.dark ? 'حالت تاریک' : 'حالت روشن', w: FontWeight.bold)),
               Switch(
+                key: ValueKey('brightness-${app.dark}'),
                 value: app.dark,
                 activeColor: pal.acc,
-                onChanged: (v) {
-                  app.dark = v;
-                  app.save(sched: false);
-                },
+                onChanged: app.setDark,
+              ),
+            ]),
+          ),
+          cardBox(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              tx('پوستهٔ برنامه', w: FontWeight.bold),
+              const SizedBox(height: 3),
+              tx('یکی از چهار سبک را انتخاب کن؛ روشنایی را هم جداگانه می‌توانی تغییر بدهی.', size: 12, color: pal.mut),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 206,
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 1.55,
+                  children: [
+                    _themeTile('classic', 'کلاسیک', 'همان ظاهر آشنای فعلی', pal.acc, pal.card2),
+                    _themeTile('glass', 'شیشه‌ای', 'سطوح مات و شفاف', const Color(0xFF46BFAE), const Color(0x777FBCD0)),
+                    _themeTile('ocean', 'اقیانوسی', 'سبزآبی و آرام', const Color(0xFF18A998), const Color(0xFF1B5660)),
+                    _themeTile('warm', 'گرم', 'رنگ‌های خاکی و نرم', const Color(0xFFB85D34), const Color(0xFF8C6149)),
+                  ],
+                ),
               ),
             ]),
           ),
@@ -493,12 +557,13 @@ class _HomeState extends State<HomePage> with WidgetsBindingObserver {
           const lbs = ['تقویم', 'همه تسک‌ها', 'قالب‌ها', 'تنظیمات'];
           return Scaffold(
             backgroundColor: pal.bg,
-            body: SafeArea(bottom: false, child: pages[tab]),
+            body: DecoratedBox(decoration: appBackground, child: SafeArea(bottom: false, child: pages[tab])),
             floatingActionButton: tab < 2
                 ? FloatingActionButton(
                     onPressed: () => openTaskForm(c),
                     backgroundColor: pal.acc,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(pal.radius)),
                     child: const Icon(Icons.add, size: 30),
                   )
                 : null,
@@ -555,6 +620,10 @@ class MyApp extends StatelessWidget {
             fontFamily: 'Vazirmatn',
             scaffoldBackgroundColor: pal.bg,
             colorScheme: ColorScheme.fromSeed(seedColor: pal.acc, brightness: app.dark ? Brightness.dark : Brightness.light),
+            switchTheme: SwitchThemeData(
+              thumbColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? pal.acc : null),
+              trackColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? pal.acc.withValues(alpha: .35) : null),
+            ),
           ),
           home: const HomePage(),
         ),

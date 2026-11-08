@@ -1,6 +1,7 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'app_state.dart';
 import 'jalali.dart';
 import 'models.dart';
@@ -12,7 +13,11 @@ import 'task_logic.dart';
 // ============================================================
 class Pal {
   final Color bg, card, card2, tx, mut, acc, amb, red, grn, bd;
-  const Pal(this.bg, this.card, this.card2, this.tx, this.mut, this.acc, this.amb, this.red, this.grn, this.bd);
+  final Color glow;
+  final double radius;
+  final bool glass, gradient;
+  const Pal(this.bg, this.card, this.card2, this.tx, this.mut, this.acc, this.amb, this.red, this.grn, this.bd,
+      {this.glow = Colors.transparent, this.radius = 16, this.glass = false, this.gradient = false});
 }
 
 const darkPal = Pal(
@@ -39,7 +44,48 @@ const lightPal = Pal(
   Color(0xFF17996A),
   Color(0xFFD9DEEC),
 );
-Pal get pal => app.dark ? darkPal : lightPal;
+const glassDarkPal = Pal(
+  Color(0xFF101827), Color(0xB822344B), Color(0x38FFFFFF), Color(0xFFF1F7FF), Color(0xFFA9BACD),
+  Color(0xFF82E8D0), Color(0xFFFFC777), Color(0xFFFF7785), Color(0xFF72D9A4), Color(0x55D9F2FF),
+  glow: Color(0xFF244A63), radius: 23, glass: true, gradient: true,
+);
+const glassLightPal = Pal(
+  Color(0xFFE8F2FB), Color(0xBFFFFFFF), Color(0x88FFFFFF), Color(0xFF18283D), Color(0xFF61758B),
+  Color(0xFF168E83), Color(0xFFB87519), Color(0xFFD74A5B), Color(0xFF21875D), Color(0x88FFFFFF),
+  glow: Color(0xFFC8E7F2), radius: 23, glass: true, gradient: true,
+);
+const oceanDarkPal = Pal(
+  Color(0xFF081D27), Color(0xFF102D38), Color(0xFF183D49), Color(0xFFE9F8F7), Color(0xFF92B6B8),
+  Color(0xFF43D6C2), Color(0xFFFFC56E), Color(0xFFFF7777), Color(0xFF73D6A1), Color(0xFF28505A),
+  glow: Color(0xFF12444A), radius: 19, gradient: true,
+);
+const oceanLightPal = Pal(
+  Color(0xFFEAF6F3), Color(0xFFFFFFFF), Color(0xFFDCEFEA), Color(0xFF173B3B), Color(0xFF648783),
+  Color(0xFF078C7B), Color(0xFFB97916), Color(0xFFC83F4F), Color(0xFF16835B), Color(0xFFC6E1DB),
+  glow: Color(0xFFC8E8DE), radius: 19, gradient: true,
+);
+const warmDarkPal = Pal(
+  Color(0xFF211A19), Color(0xFF302421), Color(0xFF42302A), Color(0xFFFFF1E7), Color(0xFFC6A99A),
+  Color(0xFFFFA66C), Color(0xFFF5C46B), Color(0xFFFF7777), Color(0xFF82C995), Color(0xFF59423A),
+  glow: Color(0xFF4A3029), radius: 20, gradient: true,
+);
+const warmLightPal = Pal(
+  Color(0xFFFAF1E7), Color(0xFFFFFCF8), Color(0xFFF2E5D8), Color(0xFF392820), Color(0xFF887466),
+  Color(0xFFB85D34), Color(0xFFB17A19), Color(0xFFC94343), Color(0xFF36845B), Color(0xFFE8D6C6),
+  glow: Color(0xFFF3DDC8), radius: 20, gradient: true,
+);
+
+Pal get pal {
+  if (app.themeId == 'glass') return app.dark ? glassDarkPal : glassLightPal;
+  if (app.themeId == 'ocean') return app.dark ? oceanDarkPal : oceanLightPal;
+  if (app.themeId == 'warm') return app.dark ? warmDarkPal : warmLightPal;
+  return app.dark ? darkPal : lightPal;
+}
+
+BoxDecoration get appBackground => BoxDecoration(
+      color: pal.bg,
+      gradient: pal.gradient ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [pal.bg, pal.glow, pal.bg]) : null,
+    );
 
 Widget tx(
   String s, {
@@ -67,7 +113,7 @@ Widget ib(Widget child, VoidCallback f, {double s = 36}) => tap(
       Container(
         width: s,
         height: s,
-        decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(app.themeId == 'classic' ? 10 : pal.radius * .55)),
         alignment: Alignment.center,
         child: child,
       ),
@@ -83,7 +129,7 @@ Widget chk(bool on, VoidCallback f, {double s = 26}) => tap(
         decoration: BoxDecoration(
           color: on ? pal.grn : null,
           border: Border.all(color: on ? pal.grn : pal.mut, width: 2),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(app.themeId == 'classic' ? 8 : pal.radius * .45),
         ),
         alignment: Alignment.center,
         child: on ? Icon(Icons.check, size: s - 10, color: Colors.white) : null,
@@ -103,7 +149,10 @@ Widget btn(
       Container(
         width: wide ? double.infinity : null,
         padding: wide ? const EdgeInsets.symmetric(vertical: 13) : p,
-        decoration: BoxDecoration(color: bg ?? pal.card2, borderRadius: BorderRadius.circular(wide ? 14 : 10)),
+          decoration: BoxDecoration(
+            color: bg ?? pal.card2,
+            borderRadius: BorderRadius.circular(wide ? (app.themeId == 'classic' ? 14 : pal.radius * .8) : (app.themeId == 'classic' ? 10 : pal.radius * .6)),
+          ),
         alignment: wide ? Alignment.center : null,
         child: tx(l, size: wide ? 15 : 13, color: fg, w: wide ? FontWeight.bold : null),
       ),
@@ -113,27 +162,37 @@ Widget chip(String l, bool on, VoidCallback f) => tap(
       f,
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-        decoration: BoxDecoration(color: on ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: on ? pal.acc : pal.card2, borderRadius: BorderRadius.circular(app.themeId == 'classic' ? 20 : pal.radius * 1.25)),
         child: tx(l, size: 13, color: on ? Colors.white : pal.mut),
       ),
     );
 
 Widget cardBox({required Widget child, Color? stripe, Color? bg, double op = 1}) => Opacity(
       opacity: op,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: bg ?? pal.card,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: BorderDirectional(start: BorderSide(color: stripe ?? pal.bd, width: 4)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
-            child: child,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(pal.radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: pal.glass ? 14 : 0, sigmaY: pal.glass ? 14 : 0),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: bg ?? pal.card,
+              borderRadius: BorderRadius.circular(pal.radius),
+              border: pal.glass ? Border.all(color: pal.bd, width: 1) : null,
+              boxShadow: app.themeId == 'classic'
+                  ? const []
+                  : [BoxShadow(color: Colors.black.withValues(alpha: app.dark ? .12 : .045), blurRadius: 16, offset: const Offset(0, 5))],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: BorderDirectional(start: BorderSide(color: stripe ?? pal.bd, width: 4)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 18, 12),
+                child: child,
+              ),
+            ),
           ),
         ),
       ),
@@ -156,7 +215,8 @@ Widget emptyBox(String m) => Padding(
 Widget lbl(String s) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6), child: tx(s, size: 13, color: pal.mut));
 
 InputDecoration deco(String hint) {
-  OutlineInputBorder b(Color c) => OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c));
+  OutlineInputBorder b(Color c) =>
+      OutlineInputBorder(borderRadius: BorderRadius.circular(app.themeId == 'classic' ? 12 : pal.radius * .7), borderSide: BorderSide(color: c));
   return InputDecoration(
     hintText: fa(hint),
     hintStyle: TextStyle(color: pal.mut),

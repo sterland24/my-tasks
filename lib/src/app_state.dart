@@ -28,6 +28,7 @@ class AppState extends ChangeNotifier {
   List<Reminder> reminders = [];
   List<Tpl> tpls = [];
   bool dark = true;
+  String themeId = 'classic';
   Map<String, int> timers = {};
   final Set<String> ex = {};
   final ValueNotifier<int> timerTick = ValueNotifier<int>(0);
@@ -82,8 +83,9 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, dynamic> toJson() => {
-        'v': 2,
+        'v': 3,
         'dark': dark,
+        'theme': themeId,
         'timers': timers,
         'tasks': tasks.map((t) => t.toJson()).toList(),
         'reminders': reminders.map((r) => r.toJson()).toList(),
@@ -98,6 +100,8 @@ class AppState extends ChangeNotifier {
     reminders = ((m['reminders'] ?? []) as List).map((e) => Reminder.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     tpls = (m['tpls'] as List).map((e) => Tpl.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     dark = m['dark'] != false;
+    final savedTheme = m['theme'];
+    themeId = savedTheme is String && const {'classic', 'glass', 'ocean', 'warm'}.contains(savedTheme) ? savedTheme : 'classic';
     timers = ((m['timers'] ?? {}) as Map).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
     _itemsCache.clear();
   }
@@ -163,6 +167,18 @@ class AppState extends ChangeNotifier {
   void toggleEx(String id) {
     ex.contains(id) ? ex.remove(id) : ex.add(id);
     notifyListeners();
+  }
+
+  void setDark(bool value) {
+    if (dark == value) return;
+    dark = value;
+    save(sched: false);
+  }
+
+  void setTheme(String value) {
+    if (!const {'classic', 'glass', 'ocean', 'warm'}.contains(value) || themeId == value) return;
+    themeId = value;
+    save(sched: false);
   }
 
   void toggleChk(Task t) {
