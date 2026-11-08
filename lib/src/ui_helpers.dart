@@ -170,11 +170,12 @@ InputDecoration deco(String hint) {
   );
 }
 
-Widget field(TextEditingController c, String hint, {int lines = 1, ValueChanged<String>? onSub}) => TextField(
+Widget field(TextEditingController c, String hint, {int lines = 1, ValueChanged<String>? onSub, TextInputType? keyboardType}) => TextField(
       controller: c,
       minLines: lines,
       maxLines: lines == 1 ? 1 : 5,
       onSubmitted: onSub,
+      keyboardType: keyboardType,
       style: TextStyle(color: pal.tx, fontFamily: 'Vazirmatn'),
       decoration: deco(hint),
     );

@@ -106,9 +106,7 @@ class AppState extends ChangeNotifier {
     tasks = [];
     reminders = [];
     timers = {};
-    tpls = [
-      Tpl('tp1', 'ویدیو کلاس', ['آماده شدن فایل', 'کاهش حجم ویدیو', 'آپلود فایل', 'ساخت و ارسال لینک']),
-    ];
+    tpls = [];
     _itemsCache.clear();
   }
 

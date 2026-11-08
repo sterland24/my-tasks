@@ -246,7 +246,7 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
 
     final taskFields = <Widget>[
       lbl('عنوان تسک *'),
-      field(tc, 'مثلاً: ویدیو کلاس جلسه ۶'),
+      field(tc, 'عنوان تسک را وارد کن'),
       lbl('یادداشت یا لینک'),
       field(nc, 'اختیاری', lines: 2),
       lbl('مراحل (چک‌لیست)'),
@@ -333,26 +333,29 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
       btn('ذخیره تسک', _save, bg: pal.acc, fg: Colors.white, wide: true),
     ];
 
-    return sheetBody(context, [
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * .78,
+      child: sheetBody(context, [
       sheetHead(context, widget.edit != null ? 'ویرایش تسک' : widget.reminderEdit != null ? 'ویرایش یادآوری' : 'افزودن مورد جدید'),
       if (widget.edit == null && widget.reminderEdit == null)
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(14)),
-          child: Row(children: [
-            for (final entry in const [('task', 'تسک جدید'), ('reminder', 'یادآوری جدید')])
-              Expanded(
-                child: tap(
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(12)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (final entry in const [('task', 'تسک'), ('reminder', 'یادآوری')])
+                tap(
                   () => setState(() => _kind = entry.$1),
                   Container(
                     alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(color: _kind == entry.$1 ? pal.acc : Colors.transparent, borderRadius: BorderRadius.circular(11)),
-                    child: tx(entry.$2, size: 13, color: _kind == entry.$1 ? Colors.white : pal.mut, w: _kind == entry.$1 ? FontWeight.bold : null),
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                    decoration: BoxDecoration(color: _kind == entry.$1 ? pal.acc : Colors.transparent, borderRadius: BorderRadius.circular(9)),
+                    child: tx(entry.$2, size: 12, color: _kind == entry.$1 ? Colors.white : pal.mut, w: _kind == entry.$1 ? FontWeight.bold : null),
                   ),
                 ),
-              ),
-          ]),
+            ]),
+          ),
         ),
       if (widget.edit != null)
         ...taskFields
@@ -372,7 +375,8 @@ class _TaskFormSheetState extends State<_TaskFormSheet> {
           child: const _ReminderForm(),
         ),
       ],
-    ]);
+      ]),
+    );
   }
 }
 
@@ -384,7 +388,7 @@ class _ReminderForm extends StatefulWidget {
 }
 
 class _ReminderFormState extends State<_ReminderForm> {
-  static const _presetOffsets = {120: '۲ ساعت قبل', 60: '۱ ساعت قبل', 15: '۱۵ دقیقه قبل'};
+  static const _presetOffsets = {120: '۲ ساعت قبل', 60: '۱ ساعت قبل', 30: '۳۰ دقیقه قبل', 15: '۱۵ دقیقه قبل'};
   late final Reminder r;
   late final TextEditingController tc, nc, customC;
 
@@ -411,32 +415,14 @@ class _ReminderFormState extends State<_ReminderForm> {
     if (picked != null) setState(() => r.time = '${pad(picked.hour)}:${pad(picked.minute)}');
   }
 
-  Future<void> _addCustomOffset() async {
-    customC.clear();
-    final minutes = await showDialog<int>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: pal.card,
-        title: tx('پیش‌یادآوری دلخواه', w: FontWeight.bold),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [tx('چند دقیقه قبل از زمان اصلی؟', size: 13, color: pal.mut), const SizedBox(height: 8), field(customC, 'مثلاً ۳۰')],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: tx('انصراف', color: pal.mut)),
-          TextButton(
-            onPressed: () => Navigator.pop(c, int.tryParse(customC.text.trim())),
-            child: tx('افزودن', color: pal.acc),
-          ),
-        ],
-      ),
-    );
-    if (minutes == null) return;
+  void _addCustomOffset() {
+    final minutes = int.tryParse(customC.text.trim());
+    if (minutes == null) return toast('زمان را به دقیقه وارد کن');
     if (minutes <= 0 || minutes > 43200) return toast('زمان باید بین ۱ تا ۴۳۲۰۰ دقیقه باشد');
     setState(() {
       if (!r.offsets.contains(minutes)) r.offsets.add(minutes);
       r.offsets.sort((a, b) => b.compareTo(a));
+      customC.clear();
     });
   }
 
@@ -478,9 +464,9 @@ class _ReminderFormState extends State<_ReminderForm> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         lbl('عنوان یادآوری *'),
-        field(tc, 'مثلاً: تماس با دکتر'),
+        field(tc, 'عنوان یادآوری را وارد کن'),
         lbl('یادداشت'),
         field(nc, 'اختیاری', lines: 2),
         lbl('تاریخ (شمسی)'),
@@ -498,11 +484,28 @@ class _ReminderFormState extends State<_ReminderForm> {
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final p in _presetOffsets.entries)
             chip(p.value, r.offsets.contains(p.key), () => setState(() {
-                  r.offsets.contains(p.key) ? r.offsets.remove(p.key) : r.offsets.add(p.key);
+                  if (r.offsets.contains(p.key)) {
+                    r.offsets.remove(p.key);
+                  } else {
+                    r.offsets.add(p.key);
+                  }
                 })),
-          for (final value in r.offsets.where((v) => !const [120, 60, 15].contains(v)))
-            chip('$value دقیقه قبل', true, () => setState(() => r.offsets.remove(value))),
-          chip('+ زمان دلخواه', false, _addCustomOffset),
+        ]),
+        for (final value in (r.offsets.toSet().toList()..sort((a, b) => b.compareTo(a))))
+          Container(
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(color: pal.card2, borderRadius: BorderRadius.circular(10)),
+            child: Row(children: [
+              Expanded(child: tx('${offsetLabel(value)} قبل', size: 13)),
+              ib(Icon(Icons.close, size: 16, color: pal.red), () => setState(() => r.offsets.remove(value)), s: 30),
+            ]),
+          ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: field(customC, 'دقیقه قبل', keyboardType: TextInputType.number, onSub: (_) => _addCustomOffset())),
+          const SizedBox(width: 8),
+          ib(const Icon(Icons.add, color: Colors.white), _addCustomOffset, s: 46),
         ]),
         const SizedBox(height: 18),
         btn(widget.edit == null ? 'ذخیره یادآوری' : 'ذخیره تغییرات', _save, bg: pal.acc, fg: Colors.white, wide: true),
