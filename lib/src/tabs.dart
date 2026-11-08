@@ -41,12 +41,21 @@ class _CalState extends State<CalTab> {
 
   String pageDate(int index) => addD(_anchor, (index - _firstPage) * (week ? 7 : 1));
 
+  double get _currentPage =>
+      _pages.hasClients && _pages.position.haveDimensions
+          ? (_pages.page ?? _page.toDouble())
+          : _page.toDouble();
+
   void showDate(String value) {
     final days = pd(value).difference(pd(_anchor)).inDays;
     final target = _firstPage + (week ? (days / 7).floor() : days);
+    final distance = (target - _page).abs();
+    if (distance > 3) {
+      _pages.jumpToPage(target > _page ? target - 2 : target + 2);
+    }
     _pages.animateToPage(
       target,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
     );
   }
@@ -66,7 +75,7 @@ class _CalState extends State<CalTab> {
 
   void step(int n) => _pages.animateToPage(
         _page + n,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 320),
         curve: Curves.easeOutCubic,
       );
 
@@ -79,24 +88,181 @@ class _CalState extends State<CalTab> {
         ),
       );
 
-  Widget stripDay(String x, String selected) {
-    final T = today(), on = x == selected;
-    final fg = on ? Colors.white : null;
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: tap(
-          () => showDate(x),
-          Container(
-            padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
-            decoration: BoxDecoration(color: on ? pal.acc : pal.card, borderRadius: BorderRadius.circular(14)),
-            child: Column(children: [
-              FittedBox(fit: BoxFit.scaleDown, child: tx(DN[wd(x)], size: 10, color: on ? Colors.white : pal.mut)),
-              tx('${jl(x)[2]}', size: 16, w: FontWeight.bold, color: fg ?? (x == T ? pal.acc : pal.tx)),
-              Text(itemsOn(x).isNotEmpty || app.remindersOn(x).isNotEmpty ? '●' : ' ', style: TextStyle(fontSize: 8, color: on ? Colors.white : pal.acc)),
-            ]),
+  Widget dayStrip(BuildContext c, double currentPage) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalWidth = constraints.maxWidth;
+        const int visibleSlots = 7;
+        final slotWidth = totalWidth / visibleSlots;
+        final centerOffset = (totalWidth - slotWidth) / 2.0;
+
+        final minIdx = currentPage.floor() - 4;
+        final maxIdx = currentPage.ceil() + 4;
+        final T = today();
+
+        return SizedBox(
+          height: 68,
+          child: ClipRect(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (int i = minIdx; i <= maxIdx; i++) ...[
+                  () {
+                    final x = pageDate(i);
+                    final isToday = x == T;
+                    final offsetFromCurrent = i - currentPage;
+                    final start = centerOffset + offsetFromCurrent * slotWidth;
+                    final dist = offsetFromCurrent.abs();
+                    final factor = (1.0 - dist).clamp(0.0, 1.0);
+
+                    final hasItems = itemsOn(x).isNotEmpty || app.remindersOn(x).isNotEmpty;
+                    final cardBg = Color.lerp(pal.card, pal.acc, factor)!;
+                    final weekdayColor = Color.lerp(pal.mut, Colors.white, factor);
+                    final numberColor = Color.lerp(isToday ? pal.acc : pal.tx, Colors.white, factor);
+                    final dotColor = Color.lerp(pal.acc, Colors.white, factor);
+
+                    return PositionedDirectional(
+                      start: start,
+                      width: slotWidth,
+                      top: 0,
+                      bottom: 0,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 2),
+                        child: tap(
+                          () => showDate(x),
+                          Transform.scale(
+                            scale: 1.0 + 0.04 * factor,
+                            child: Container(
+                              padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                              decoration: BoxDecoration(
+                                color: cardBg,
+                                borderRadius: BorderRadius.circular(
+                                  app.themeId == 'classic' ? 12 : pal.radius * 0.55,
+                                ),
+                                border: isToday && factor < 0.8
+                                    ? Border.all(
+                                        color: pal.acc.withValues(alpha: 0.8 * (1.0 - factor)),
+                                        width: 1.5,
+                                      )
+                                    : null,
+                                boxShadow: factor > 0.05
+                                    ? [
+                                        BoxShadow(
+                                          color: pal.acc.withValues(alpha: 0.28 * factor),
+                                          blurRadius: 8 * factor,
+                                          offset: Offset(0, 2 * factor),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: tx(
+                                      DN[wd(x)],
+                                      size: 10,
+                                      color: weekdayColor,
+                                      w: factor > 0.5 ? FontWeight.w600 : FontWeight.normal,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 1),
+                                  tx(
+                                    '${jl(x)[2]}',
+                                    size: 16,
+                                    w: FontWeight.bold,
+                                    color: numberColor,
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    hasItems ? '●' : ' ',
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      color: dotColor,
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }(),
+                ],
+              ],
+            ),
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Widget dateNavBar(BuildContext c, double currentPage) {
+    final T = today();
+    final minIdx = currentPage.floor();
+    final maxIdx = currentPage.ceil();
+    final indices = {minIdx - 1, minIdx, maxIdx, maxIdx + 1};
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(
+        children: [
+          ib(glyph('›'), () => step(-1)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: ClipRect(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    for (final i in indices) ...[
+                      () {
+                        final offset = i - currentPage;
+                        if (offset.abs() > 1.2) return const SizedBox.shrink();
+
+                        final d = pageDate(i);
+                        final ws = wStart(d), we = addD(ws, 6);
+                        final away = week ? (T.compareTo(ws) < 0 || T.compareTo(we) > 0) : d != T;
+                        final title = week ? '${jfmt(ws)} تا ${jfmt(we)}' : '${DN[wd(d)]} ${jfmt(d)} ${jl(d)[0]}';
+                        final translationX = -offset;
+                        final opacity = (1.0 - offset.abs() * 1.1).clamp(0.0, 1.0);
+
+                        return FractionalTranslation(
+                          translation: Offset(translationX, 0.0),
+                          child: Opacity(
+                            opacity: opacity,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                tx(title, w: FontWeight.bold, align: TextAlign.center),
+                                const SizedBox(height: 2),
+                                if (away)
+                                  btn(
+                                    'برگرد به امروز',
+                                    () => showDate(T),
+                                    p: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                  )
+                                else
+                                  tx(week ? 'هفته‌ی جاری' : 'امروز', size: 12, color: pal.mut),
+                              ],
+                            ),
+                          ),
+                        );
+                      }(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ib(glyph('‹'), () => step(1)),
+        ],
       ),
     );
   }
@@ -196,68 +362,88 @@ class _CalState extends State<CalTab> {
     return out.isEmpty ? emptyBox('📭\nبرای این روز موردی نیست.') : Column(children: out);
   }
 
-  Widget calendarPage(BuildContext c, String d) => ListenableBuilder(
-        listenable: app,
-        builder: (c, _) {
-          final T = today(), ws = wStart(d), we = addD(ws, 6);
-          final away = week ? (T.compareTo(ws) < 0 || T.compareTo(we) > 0) : d != T;
-          final title = week ? '${jfmt(ws)} تا ${jfmt(we)}' : '${DN[wd(d)]} ${jfmt(d)} ${jl(d)[0]}';
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
-            children: [
-              if (!week)
-                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Row(children: [for (int i = 0; i < 7; i++) stripDay(addD(d, i - 3), d)]))
-              else
-                const SizedBox(height: 12),
-              Row(children: [
-                ib(glyph('‹'), () => step(-1)),
-                Expanded(
-                  child: Column(children: [
-                    tx(title, w: FontWeight.bold, align: TextAlign.center),
-                    if (away)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: btn('برگرد به امروز', () => showDate(T), p: const EdgeInsets.symmetric(horizontal: 12, vertical: 3)),
-                      )
-                    else
-                      tx(week ? 'هفته‌ی جاری' : 'امروز', size: 12, color: pal.mut),
-                  ]),
-                ),
-                ib(glyph('›'), () => step(1)),
-              ]),
-              const SizedBox(height: 4),
-              if (week) ...[for (int i = 0; i < 7; i++) weekDay(c, addD(ws, i))] else dayBody(c, d),
-            ],
-          );
-        },
-      );
-
   @override
   Widget build(BuildContext c) => ListenableBuilder(
         listenable: app,
-        builder: (c, _) => Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: Row(children: [
-              tx('تقویم', size: 22, w: FontWeight.bold),
-              const SizedBox(width: 14),
-              segBtn('روز', !week, () => showWeek(false)),
-              const SizedBox(width: 6),
-              segBtn('هفته', week, () => showWeek(true)),
-            ]),
-          ),
-          Expanded(
-            child: PageView.builder(
-              controller: _pages,
-              onPageChanged: (index) => setState(() {
-                _page = index;
-                date = pageDate(index);
-                app.selectedDate = date;
-              }),
-              itemBuilder: (c, index) => calendarPage(c, pageDate(index)),
+        builder: (c, _) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+              child: Row(
+                children: [
+                  tx('تقویم', size: 22, w: FontWeight.bold),
+                  const SizedBox(width: 14),
+                  segBtn('روز', !week, () => showWeek(false)),
+                  const SizedBox(width: 6),
+                  segBtn('هفته', week, () => showWeek(true)),
+                ],
+              ),
             ),
-          ),
-        ]),
+            AnimatedBuilder(
+              animation: _pages,
+              builder: (context, _) {
+                final p = _currentPage;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      child: !week
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 10, bottom: 4),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onHorizontalDragEnd: (details) {
+                                  if (details.primaryVelocity != null && details.primaryVelocity!.abs() > 150) {
+                                    if (details.primaryVelocity! < 0) {
+                                      step(1);
+                                    } else {
+                                      step(-1);
+                                    }
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  child: dayStrip(c, p),
+                                ),
+                              ),
+                            )
+                          : const SizedBox(height: 6),
+                    ),
+                    dateNavBar(c, p),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: PageView.builder(
+                controller: _pages,
+                onPageChanged: (index) => setState(() {
+                  _page = index;
+                  date = pageDate(index);
+                  app.selectedDate = date;
+                }),
+                itemBuilder: (c, index) {
+                  final d = pageDate(index);
+                  final ws = wStart(d);
+                  return ListView(
+                    key: PageStorageKey('cal_content_$d'),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+                    children: [
+                      if (week) ...[
+                        for (int i = 0; i < 7; i++) weekDay(c, addD(ws, i)),
+                      ] else ...[
+                        dayBody(c, d),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       );
 }
 
